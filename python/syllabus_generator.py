@@ -1,9 +1,11 @@
 import os
+import sys
 import json
 from pathlib import Path
-from google import genai
 
 DEFAULT_GOOGLE_CREDENTIALS = Path(__file__).resolve().parents[1] / "google-api-key.json"
+DEFAULT_INPUT_PATH = Path(__file__).with_name("syllabus_input.example.json")
+
 if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and DEFAULT_GOOGLE_CREDENTIALS.exists():
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(DEFAULT_GOOGLE_CREDENTIALS)
 
@@ -68,27 +70,36 @@ Return JSON in this exact top-level structure:
 }
 """
 
-def main():
-    # 1) Prepare JSON input
-    payload = {
-        "target_skill": "Laser and optical systems in space",
-        "duration_weeks": 4,
-        "difficulty_level": 2,
-        "learning_style": "practical",
-        "hours_per_week": 6,
-        "personal_parameters": [
-            "Prefers clear and structured explanations",
-            "Needs structured step-by-step learning"
-        ]
-    }
+def load_payload(input_path):
+    with open(input_path, "r", encoding="utf-8") as file:
+        return json.load(file)
 
-    client = genai.Client(
+
+def build_client():
+    from google import genai
+
+    return genai.Client(
         vertexai=True,
         project="mcc-ece-gemini",
         location="us-central1"
     )
 
-    model_name = "gemini-2.5-flash"
+
+def parse_model_response(text):
+    text = text.strip()
+
+    # In case the model still adds code fences, strip them defensively.
+    if text.startswith("```"):
+        text = text.strip("`").strip()
+        if text.startswith("json"):
+            text = text[4:].strip()
+
+    return json.loads(text)
+
+
+def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash"):
+    if client is None:
+        client = build_client()
 
     response = client.models.generate_content(
         model=model_name,
@@ -99,22 +110,19 @@ def main():
         },
     )
 
-    text = response.text.strip()
+    return parse_model_response(response.text)
 
-    # In case the model still adds code fences, strip them defensively
-    if text.startswith("```"):
-        text = text.strip("`").strip()
-        if text.startswith("json"):
-            text = text[4:].strip()
 
-    # print("=== RAW MODEL OUTPUT START ===")
-    # print(text)
-    # print("=== RAW MODEL OUTPUT END ===")
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
 
-    output = json.loads(text)
+    input_path = Path(argv[0]) if argv else DEFAULT_INPUT_PATH
+    payload = load_payload(input_path)
+    output = generate_syllabus(payload)
 
-    # 5) Print pretty JSON
     print(json.dumps(output, indent=2))
+
 
 if __name__ == "__main__":
     main()
