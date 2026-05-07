@@ -39,7 +39,8 @@ python3 python/syllabus_generator.py path/to/input.json
 
 Example input file:
 
-- `python/syllabus_input.example.json`
+- `python/inputs/space.json`
+- `python/inputs/health.json`
 
 ## Run The Unit Test
 

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 DEFAULT_GOOGLE_CREDENTIALS = Path(__file__).resolve().parents[1] / "google-api-key.json"
-DEFAULT_INPUT_PATH = Path(__file__).with_name("syllabus_input.example.json")
+DEFAULT_INPUT_PATH = Path(__file__).with_name("inputs") / "space.json"
 
 if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and DEFAULT_GOOGLE_CREDENTIALS.exists():
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(DEFAULT_GOOGLE_CREDENTIALS)

@@ -1,0 +1,12 @@
+{
+  "target_skill": "Applied data science for public health",
+  "duration_weeks": 6,
+  "difficulty_level": 3,
+  "learning_style": "theoretical",
+  "hours_per_week": 8,
+  "personal_parameters": [
+    "Prefers concept-first explanations before coding",
+    "Wants examples connected to real health datasets",
+    "Benefits from weekly synthesis and review"
+  ]
+}
