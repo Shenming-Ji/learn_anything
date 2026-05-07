@@ -1,16 +1,21 @@
 import io
 import json
+import sys
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from python import syllabus_generator
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+
+import syllabus_generator
+import syllabus_service
 
 
 class SyllabusGeneratorTests(unittest.TestCase):
-    def test_load_payload_reads_example_json(self):
-        payload = syllabus_generator.load_payload(syllabus_generator.DEFAULT_INPUT_PATH)
+    def test_reads_example_json(self):
+        payload = syllabus_service.load_payload(syllabus_service.DEFAULT_INPUT_PATH)
 
         self.assertEqual(payload["target_skill"], "Laser and optical systems in space")
         self.assertEqual(payload["duration_weeks"], 4)
@@ -20,10 +25,16 @@ class SyllabusGeneratorTests(unittest.TestCase):
                 {"topic": "Optical Systems"}
                 ```"""
 
-        output = syllabus_generator.parse_model_response(text)
+        output = syllabus_service.parse_model_response(text)
 
         self.assertEqual(output["topic"], "Optical Systems")
 
+    def test_load_system_prompt_reads_prompt_file(self):
+        prompt = syllabus_service.load_system_prompt()
+
+        self.assertIn("week-by-week course syllabus", prompt)
+
+    # test the whole pipeline
     def test_main_reads_json_file_and_prints_result(self):
         fake_response = SimpleNamespace(
             text=json.dumps(
@@ -53,10 +64,10 @@ class SyllabusGeneratorTests(unittest.TestCase):
             models=SimpleNamespace(generate_content=lambda **_: fake_response)
         )
 
-        with patch.object(syllabus_generator, "build_client", return_value=fake_client):
+        with patch.object(syllabus_generator, "generate_syllabus", return_value=json.loads(fake_response.text)):
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                syllabus_generator.main([str(syllabus_generator.DEFAULT_INPUT_PATH)])
+                syllabus_generator.main([str(syllabus_service.DEFAULT_INPUT_PATH)])
 
         output = json.loads(stdout.getvalue())
         self.assertEqual(output["topic"], "Laser and optical systems in space")
