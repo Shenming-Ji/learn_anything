@@ -1,0 +1,12 @@
+#!/bin/bash
+cd .. || exit
+
+# Create and activate virtual environment
+python3 -m venv penv
+source penv/bin/activate
+pip install --upgrade pip
+pip install -r scripts/requirements.txt 
+
+# run the app
+cd python || exit
+python3 chatbot.py -d ../test -db ../vectordb -b

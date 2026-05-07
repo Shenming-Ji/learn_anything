@@ -1,0 +1,15 @@
+numpy<2
+pybind11>=2.12
+PyPDF2 
+python-docx 
+faiss-cpu
+torch
+langchain
+langchain-openai
+langchain-community
+langchain-huggingface
+sentence-transformers
+groq
+openai
+anthropic
+google-genai
