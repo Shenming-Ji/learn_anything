@@ -114,10 +114,10 @@ class SyllabusGeneratorTests(unittest.TestCase):
                 }
             )
         )
-        captured_call = {}
+        captured_calls = []
 
         def fake_generate_content(**kwargs):
-            captured_call.update(kwargs)
+            captured_calls.append(kwargs)
             return fake_response
 
         fake_client = SimpleNamespace(
@@ -128,13 +128,24 @@ class SyllabusGeneratorTests(unittest.TestCase):
 
         self.assertEqual(output["topic"], "Intro to robotics")
         self.assertEqual(output["content"]["skill_name"], "content_generator")
-        self.assertNotIn("sub_contents", json.dumps(output["content"]))
-        self.assertIn("name: content_generator", captured_call["contents"])
-        self.assertIn('"target_skill": "Intro to robotics"', captured_call["contents"])
+        
+        topics = output["content"]["topics"]
+        self.assertIn("sub_contents", topics[0])
+        self.assertIsInstance(topics[0]["sub_contents"], list)
+
+        first_call = captured_calls[0]
+        self.assertIn("name: content_generator", first_call["contents"])
+        self.assertIn('"target_skill": "Intro to robotics"', first_call["contents"])
         self.assertEqual(
-            captured_call["config"]["system_instruction"],
+            first_call["config"]["system_instruction"],
             syllabus_service.load_system_prompt(),
         )
+        self.assertGreaterEqual(len(captured_calls), 2)
+
+        second_call = captured_calls[1]
+        self.assertIn("sub_content_generator", second_call["contents"])
+        self.assertIn("Robotics Foundations", second_call["contents"])
+        self.assertIn("Return JSON only", second_call["contents"])
 
     def test_existing_public_functions_import_successfully(self):
         self.assertTrue(callable(syllabus_service.load_payload))

@@ -8,6 +8,7 @@ DEFAULT_GOOGLE_CREDENTIALS = Path(__file__).resolve().parents[1] / "google-api-k
 DEFAULT_INPUT_PATH = Path(__file__).with_name("inputs") / "space.json"
 PROMPT_PATH = Path(__file__).with_name("syllabus_prompt.txt")
 SKILL_PATH = BASE_DIR / "skills" / "content_generator" / "SKILL.md"
+SUB_CONTENT_SKILL_PATH = BASE_DIR / "skills" / "sub_content_generator" / "SKILL.md"
 
 if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and DEFAULT_GOOGLE_CREDENTIALS.exists():
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(DEFAULT_GOOGLE_CREDENTIALS)
@@ -29,6 +30,12 @@ def load_content_generation_skill(skill_path=SKILL_PATH):
     return skill_path.read_text(encoding="utf-8")
 
 
+def load_sub_content_generation_skill(skill_path=SUB_CONTENT_SKILL_PATH):
+    if not skill_path.exists():
+        raise FileNotFoundError(f"Skill file not found: {skill_path}")
+    return skill_path.read_text(encoding="utf-8")
+
+
 def build_generation_prompt(payload, prompt_path=PROMPT_PATH, skill_path=SKILL_PATH):
     skill_instruction = load_content_generation_skill(skill_path)
     syllabus_prompt = load_system_prompt(prompt_path)
@@ -40,6 +47,22 @@ def build_generation_prompt(payload, prompt_path=PROMPT_PATH, skill_path=SKILL_P
         f"User input:\n{user_input}\n\n"
         "Generate one JSON response that includes the syllabus top-level structure and a nested content object "
         "that follows the SKILL.md instructions. Return JSON only."
+    )
+
+
+def build_sub_content_prompt(topic, course_context, skill_path=SUB_CONTENT_SKILL_PATH):
+    skill_instruction = load_sub_content_generation_skill(skill_path)
+
+    sub_content_input = {
+        "course_context": course_context,
+        "topic": topic,
+    }
+
+    return (
+        f"{skill_instruction}\n\n"
+        f"Input:\n{json.dumps(sub_content_input, indent=2, ensure_ascii=False)}\n\n"
+        "Generate JSON that follows the sub_content_generator SKILL.md instructions. "
+        "Return JSON only."
     )
 
 
@@ -64,6 +87,50 @@ def parse_model_response(text):
     return json.loads(text)
 
 
+def generate_sub_contents_for_topic(topic, course_context, client=None, model_name="gemini-2.5-flash"):
+    if client is None:
+        client = build_client()
+
+    response = client.models.generate_content(
+        model=model_name,
+        contents=build_sub_content_prompt(topic, course_context),
+        config={
+            "system_instruction": "You generate valid JSON instructional sub-content chunks only.",
+            "temperature": 0.3,
+        },
+    )
+
+    return parse_model_response(response.text)
+
+
+def add_sub_contents(output, client=None, model_name="gemini-2.5-flash"):
+    if client is None:
+        client = build_client()
+
+    course_context = {
+        "topic": output.get("topic"),
+        "duration_weeks": output.get("duration_weeks"),
+        "difficulty_level": output.get("difficulty_level"),
+        "learning_style": output.get("learning_style"),
+        "hours_per_week": output.get("hours_per_week"),
+        "personal_parameters": output.get("personal_parameters", []),
+        "goals": output.get("goals", []),
+    }
+
+    topics = output.get("content", {}).get("topics", [])
+
+    for topic in topics:
+        sub_content_result = generate_sub_contents_for_topic(
+            topic=topic,
+            course_context=course_context,
+            client=client,
+            model_name=model_name,
+        )
+        topic["sub_contents"] = sub_content_result.get("sub_contents", [])
+
+    return output
+
+
 def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash"):
     if client is None:
         client = build_client()
@@ -77,4 +144,5 @@ def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash"):
         },
     )
 
-    return parse_model_response(response.text)
+    output = parse_model_response(response.text)
+    return add_sub_contents(output, client=client, model_name=model_name)

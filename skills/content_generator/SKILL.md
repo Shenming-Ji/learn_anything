@@ -14,6 +14,7 @@ Use this skill when the input asks for a learning plan, structured content gener
 # Input
 
 The input may describe a learner goal, a syllabus request, or a structured JSON payload containing information such as:
+
 - target skill or learning goal
 - duration or time constraints
 - difficulty level
@@ -31,25 +32,25 @@ This skill defines the structure of the nested `content` object inside a larger 
 Use this exact `content` structure:
 
 {
-  "skill_name": "",
-  "description": "",
-  "difficulty_level": "",
-  "target_audience": "",
-  "topics": [
-    {
-      "topic_title": "",
-      "topic_description": "",
-      "estimated_hours": 0,
-      "assessment_count": 0,
-      "assessments": [
-        {
-          "assessment_type": "",
-          "assessment_description": "",
-          "assessment_focus": []
-        }
-      ]
-    }
-  ]
+"skill_name": "",
+"description": "",
+"difficulty_level": "",
+"target_audience": "",
+"topics": [
+{
+"topic_title": "",
+"topic_description": "",
+"estimated_hours": 0,
+"assessment_count": 0,
+"assessments": [
+{
+"assessment_type": "",
+"assessment_description": "",
+"assessment_focus": []
+}
+]
+}
+]
 }
 
 # Content Rules
@@ -62,10 +63,11 @@ Use this exact `content` structure:
    - `estimated_hours`
    - `assessment_count`
    - `assessments`
-4. Each `estimated_hours` value must be a realistic positive number for the scope of that topic.
-5. Keep the output consistent with the requested difficulty and learner context.
-6. Keep wording precise, instructional, and easy to parse downstream.
-7. Do not include `sub_contents` in this stage. Sub-content chunks will be generated separately later.
+4. Each `topic_title` must begin with a numeric prefix in the format `<week_number>.<topic_number> Topic Name`, such as `1.1 Nature of Light and Electromagnetic Spectrum` or `4.3 Space Debris Tracking and Mitigation`. Do not output unnumbered topic titles.
+5. Each `estimated_hours` value must be a realistic positive number for the scope of that topic.
+6. Keep the output consistent with the requested difficulty and learner context.
+7. Keep wording precise, instructional, and easy to parse downstream.
+8. Do not include `sub_contents` in this stage. Sub-content chunks will be generated separately later.
 
 # Assessment Rules
 
@@ -79,6 +81,7 @@ Use this exact `content` structure:
 # Quality Checks
 
 Before returning the response, verify all of the following:
+
 1. The response is valid JSON.
 2. The response contains no markdown or explanatory text outside the JSON object.
 3. Every topic has `estimated_hours`.

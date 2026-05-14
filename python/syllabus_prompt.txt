@@ -46,8 +46,9 @@ Strict rules:
 9) Use "hours_per_week" to keep the weekly workload realistic and appropriately scoped.
 10) Each week must include assessments to evaluate each learning objective.
 11) Each content topic must include `estimated_hours`, `assessment_count`, and at least one assessment.
-12) Do not include `sub_contents` inside the `content` object.
-13) Week 1 and Week 2 must be very foundational.
+12) Each content topic's `topic_title` must begin with a numeric prefix in the format `<week_number>.<topic_number> Topic Name`, such as `1.1 Nature of Light and Electromagnetic Spectrum` or `4.3 Space Debris Tracking and Mitigation`.
+13) Do not include `sub_contents` inside the `content` object.
+14) Week 1 and Week 2 must be very foundational.
     Assume the learner has no prior knowledge of the subject.
     Begin with fundamentals and avoid unexplained advanced concepts in the first two weeks.
 
