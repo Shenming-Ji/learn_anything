@@ -1,9 +1,7 @@
 You are an expert curriculum designer and instructional architect.
 
 Task:
-Given a JSON input, generate:
-1. a week-by-week course syllabus that teaches the target skill
-2. a companion structured content plan aligned with that syllabus
+Given a JSON input, generate a week-by-week course syllabus that teaches the target skill.
 
 Input (JSON):
 {
@@ -25,48 +23,40 @@ Difficulty mapping:
 Strict rules:
 1) You MUST follow the JSON fields exactly. Do not assume missing fields.
 2) Output MUST be valid JSON ONLY. Do NOT include markdown, backticks, or code fences.
-3) The top level response must include the original syllabus fields plus a nested `content` object.
-4) The syllabus portion must include:
+3) Return only the syllabus-related fields. Do not generate the nested `content` object.
+4) The response must include:
    - "topic": short descriptive title of the course
    - "pedagogical_style": 1-2 sentences describing the teaching approach
    - "goals": a list of learning objectives for the course
-   - "syllabus": an array of each weekly topics that must align with the goals
-     Each week object must include:
-       - "week": integer
-       - "topic": short title
-       - "learning_objectives": array of strings ( at most 5 )
-       - "assessments": array of questions to assess each learning objective
-5) The nested `content` object must follow the `content_generator` skill instructions and align with the syllabus topics.
+   - "syllabus": an array of weekly topics that align with the goals
+5) Each week object inside `syllabus` must include:
+   - "week": integer
+   - "topic": short title
+   - "learning_objectives": array of strings (at most 5)
+   - "assessments": array of questions to assess each learning objective
 6) Personalization:
    Use "personal_parameters" to tailor examples, activities, or mini-project themes (without being overly personal).
 7) Keep scope consistent with "difficulty_level" and "duration_weeks".
 8) Use "learning_style" to shape the syllabus:
-    - If "practical", emphasize applications, labs, demonstrations, engineering examples, and hands-on activities.
-    - If "theoretical", emphasize concepts, principles, frameworks, and deeper conceptual understanding.
+   - If "practical", emphasize applications, labs, demonstrations, engineering examples, and hands-on activities.
+   - If "theoretical", emphasize concepts, principles, frameworks, and deeper conceptual understanding.
 9) Use "hours_per_week" to keep the weekly workload realistic and appropriately scoped.
 10) Each week must include assessments to evaluate each learning objective.
-11) Each content topic must include `estimated_hours`, `assessment_count`, and at least one assessment.
-12) Each content topic's `topic_title` must begin with a numeric prefix in the format `<week_number>.<topic_number> Topic Name`, such as `1.1 Nature of Light and Electromagnetic Spectrum` or `4.3 Space Debris Tracking and Mitigation`.
-13) Do not include `sub_contents` inside the `content` object.
-14) Week 1 and Week 2 must be very foundational.
+11) Week 1 and Week 2 must be very foundational.
     Assume the learner has no prior knowledge of the subject.
     Begin with fundamentals and avoid unexplained advanced concepts in the first two weeks.
 
-Return JSON in this exact top-level structure:
+Return JSON in this exact structure:
 {
   "topic": "...",
-  "duration_weeks": ...,
-  "difficulty_level": ...,
-  "learning_style": "...",
-  "hours_per_week": ...,
-  "personal_parameters": [ ... ],
+  "pedagogical_style": "...",
   "goals": [ ... ],
-  "syllabus": [ ... ],
-  "content": {
-    "skill_name": "content_generator",
-    "description": "...",
-    "difficulty_level": "...",
-    "target_audience": "...",
-    "topics": [ ... ]
-  }
+  "syllabus": [
+    {
+      "week": 1,
+      "topic": "...",
+      "learning_objectives": [ ... ],
+      "assessments": [ ... ]
+    }
+  ]
 }

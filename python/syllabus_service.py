@@ -36,17 +36,34 @@ def load_sub_content_generation_skill(skill_path=SUB_CONTENT_SKILL_PATH):
     return skill_path.read_text(encoding="utf-8")
 
 
-def build_generation_prompt(payload, prompt_path=PROMPT_PATH, skill_path=SKILL_PATH):
-    skill_instruction = load_content_generation_skill(skill_path)
+def build_syllabus_prompt(payload, prompt_path=PROMPT_PATH):
     syllabus_prompt = load_system_prompt(prompt_path)
     user_input = json.dumps(payload, indent=2, ensure_ascii=False)
 
     return (
-        f"{skill_instruction}\n\n"
-        f"Existing syllabus prompt:\n{syllabus_prompt}\n\n"
+        f"{syllabus_prompt}\n\n"
         f"User input:\n{user_input}\n\n"
-        "Generate one JSON response that includes the syllabus top-level structure and a nested content object "
-        "that follows the SKILL.md instructions. Return JSON only."
+        "Generate JSON that follows the syllabus instructions only. Return JSON only."
+    )
+
+
+def build_content_prompt(payload, syllabus, skill_path=SKILL_PATH):
+    skill_instruction = load_content_generation_skill(skill_path)
+    content_input = {
+        "request": payload,
+        "syllabus_context": {
+            "topic": syllabus.get("topic"),
+            "pedagogical_style": syllabus.get("pedagogical_style"),
+            "goals": syllabus.get("goals", []),
+            "syllabus": syllabus.get("syllabus", []),
+        },
+    }
+
+    return (
+        f"{skill_instruction}\n\n"
+        f"Input:\n{json.dumps(content_input, indent=2, ensure_ascii=False)}\n\n"
+        "Generate only the content object that follows the content_generator SKILL.md instructions. "
+        "Align the topics and assessments with the provided syllabus_context. Return JSON only."
     )
 
 
@@ -85,6 +102,53 @@ def parse_model_response(text):
             text = text[4:].strip()
 
     return json.loads(text)
+
+
+def merge_generated_sections(payload, syllabus, content):
+    return {
+        "topic": syllabus.get("topic", payload.get("target_skill")),
+        "duration_weeks": payload.get("duration_weeks"),
+        "difficulty_level": payload.get("difficulty_level"),
+        "learning_style": payload.get("learning_style"),
+        "hours_per_week": payload.get("hours_per_week"),
+        "personal_parameters": payload.get("personal_parameters", []),
+        "pedagogical_style": syllabus.get("pedagogical_style"),
+        "goals": syllabus.get("goals", []),
+        "syllabus": syllabus.get("syllabus", []),
+        "content": content,
+    }
+
+
+def generate_syllabus_outline(payload, client=None, model_name="gemini-2.5-flash"):
+    if client is None:
+        client = build_client()
+
+    response = client.models.generate_content(
+        model=model_name,
+        contents=build_syllabus_prompt(payload),
+        config={
+            "system_instruction": "You generate valid JSON syllabus plans only.",
+            "temperature": 0.3,
+        },
+    )
+
+    return parse_model_response(response.text)
+
+
+def generate_content_plan(payload, syllabus, client=None, model_name="gemini-2.5-flash"):
+    if client is None:
+        client = build_client()
+
+    response = client.models.generate_content(
+        model=model_name,
+        contents=build_content_prompt(payload, syllabus),
+        config={
+            "system_instruction": "You generate valid JSON content plans only.",
+            "temperature": 0.3,
+        },
+    )
+
+    return parse_model_response(response.text)
 
 
 def generate_sub_contents_for_topic(topic, course_context, client=None, model_name="gemini-2.5-flash"):
@@ -135,14 +199,7 @@ def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash"):
     if client is None:
         client = build_client()
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=build_generation_prompt(payload),
-        config={
-            "system_instruction": load_system_prompt(),
-            "temperature": 0.3,
-        },
-    )
-
-    output = parse_model_response(response.text)
+    syllabus = generate_syllabus_outline(payload, client=client, model_name=model_name)
+    content = generate_content_plan(payload, syllabus, client=client, model_name=model_name)
+    output = merge_generated_sections(payload, syllabus, content)
     return add_sub_contents(output, client=client, model_name=model_name)
