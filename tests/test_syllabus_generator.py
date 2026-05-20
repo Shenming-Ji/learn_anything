@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 import syllabus_generator
 import syllabus_service
 import content_cache_demo
+import syllabus_web
 from pipeline.cache_manager import make_cache_key
 from pipeline.skill_registry import get_skill
 
@@ -58,6 +59,38 @@ class SyllabusGeneratorTests(unittest.TestCase):
         output = syllabus_service.parse_model_response(text)
 
         self.assertEqual(output["topic"], "Optical Systems")
+
+    def test_normalize_content_output_fills_missing_topic_title(self):
+        output = syllabus_service.normalize_content_output(
+            {
+                "sub_contents": [
+                    {
+                        "content_title": "Optical Basics",
+                        "content_text": "A short explanation.",
+                    }
+                ]
+            },
+            topic={"topic_title": "1.1 Fundamentals of Optics"},
+        )
+
+        self.assertEqual(output["topic_title"], "1.1 Fundamentals of Optics")
+
+    def test_normalize_content_output_maps_title_and_text_fields(self):
+        output = syllabus_service.normalize_content_output(
+            {
+                "topic_title": "1.1 Fundamentals of Optics",
+                "sub_contents": [
+                    {
+                        "title": "Optical Basics",
+                        "text": "A short explanation.",
+                    }
+                ]
+            }
+        )
+
+        chunk = output["sub_contents"][0]
+        self.assertEqual(chunk["content_title"], "Optical Basics")
+        self.assertEqual(chunk["content_text"], "A short explanation.")
 
     def test_load_system_prompt_reads_prompt_file(self):
         prompt = syllabus_service.load_system_prompt()
@@ -359,6 +392,61 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertTrue(args.live)
         self.assertEqual(args.model, "gemini-2.5-pro")
         self.assertEqual(args.cache_dir, ".cache/demo")
+
+    def test_syllabus_web_build_payload_from_form(self):
+        payload = syllabus_web.build_payload_from_form(
+            {
+                "target_skill": "Intro to robotics",
+                "duration_weeks": "6",
+                "difficulty_level": "2",
+                "learning_style": "practical",
+                "hours_per_week": "5",
+                "personal_parameters": "Hands-on learner\nNeeds step-by-step structure",
+            }
+        )
+
+        self.assertEqual(payload["target_skill"], "Intro to robotics")
+        self.assertEqual(payload["duration_weeks"], 6)
+        self.assertEqual(payload["difficulty_level"], 2)
+        self.assertEqual(
+            payload["personal_parameters"],
+            ["Hands-on learner", "Needs step-by-step structure"],
+        )
+
+    def test_syllabus_web_split_personal_parameters_supports_commas_and_lines(self):
+        items = syllabus_web.split_personal_parameters(
+            "Prefers examples, Wants pacing help\nNeeds review checkpoints"
+        )
+
+        self.assertEqual(
+            items,
+            [
+                "Prefers examples",
+                "Wants pacing help",
+                "Needs review checkpoints",
+            ],
+        )
+
+    def test_syllabus_web_loads_known_sample(self):
+        payload = syllabus_web.load_sample_payload("space")
+
+        self.assertEqual(payload["target_skill"], "Laser and optical systems in space")
+
+    def test_syllabus_web_parse_args(self):
+        args = syllabus_web.parse_args(["--host", "0.0.0.0", "--port", "9000"])
+
+        self.assertEqual(args.host, "0.0.0.0")
+        self.assertEqual(args.port, 9000)
+
+    def test_syllabus_web_html_renders_assessments_and_sub_contents(self):
+        html = (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
+
+        self.assertIn("function renderAssessments", html)
+        self.assertIn("function renderSubContents", html)
+        self.assertIn("function summarizeText", html)
+        self.assertIn("Assessment Details", html)
+        self.assertIn("Sub-content Details", html)
+        self.assertIn("Read full text", html)
 
     def test_build_tracking_client_counts_live_style_calls(self):
         captured_calls = []

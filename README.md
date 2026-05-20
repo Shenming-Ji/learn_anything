@@ -40,7 +40,29 @@ python3 python/syllabus_generator.py path/to/input.json
 Example input file:
 
 - `python/inputs/space.json`
-- `python/inputs/health.json`
+- `python/inputs/ds_health.json`
+
+## Run The Web Interface
+
+Start the local interface:
+
+```bash
+python3 python/syllabus_web.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Optional host and port:
+
+```bash
+python3 python/syllabus_web.py --host 0.0.0.0 --port 9000
+```
+
+The web UI lets users enter `target_skill`, `duration_weeks`, `difficulty_level`, `learning_style`, `hours_per_week`, and `personal_parameters`, previews the generated input JSON, and shows the final output as both readable sections and pretty JSON.
 
 ## Run The Unit Test
 

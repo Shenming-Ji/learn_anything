@@ -154,6 +154,44 @@ def build_content_cache_input(topic, course_context):
     }
 
 
+def normalize_content_output(output, topic=None):
+    if not isinstance(output, dict):
+        return output
+
+    normalized_output = dict(output)
+
+    topic_title = normalized_output.get("topic_title")
+    if (not isinstance(topic_title, str) or not topic_title.strip()) and topic is not None:
+        fallback_title = topic.get("topic_title")
+        if isinstance(fallback_title, str) and fallback_title.strip():
+            normalized_output["topic_title"] = fallback_title.strip()
+
+    raw_sub_contents = normalized_output.get("sub_contents")
+    if isinstance(raw_sub_contents, list):
+        normalized_sub_contents = []
+        for chunk in raw_sub_contents:
+            if not isinstance(chunk, dict):
+                normalized_sub_contents.append(chunk)
+                continue
+
+            normalized_chunk = dict(chunk)
+            if "content_title" not in normalized_chunk and isinstance(normalized_chunk.get("title"), str):
+                normalized_chunk["content_title"] = normalized_chunk["title"]
+
+            if "content_text" not in normalized_chunk:
+                for fallback_key in ("content", "text", "body"):
+                    fallback_value = normalized_chunk.get(fallback_key)
+                    if isinstance(fallback_value, str) and fallback_value.strip():
+                        normalized_chunk["content_text"] = fallback_value
+                        break
+
+            normalized_sub_contents.append(normalized_chunk)
+
+        normalized_output["sub_contents"] = normalized_sub_contents
+
+    return normalized_output
+
+
 def validate_content_output(output):
     if not isinstance(output, dict):
         raise ValueError("Content output must be a JSON object.")
@@ -267,6 +305,7 @@ def generate_sub_contents_for_topic(
         cached_output = get_cached_output(cache_key, cache_dir=cache_dir)
         if cached_output is not None:
             try:
+                cached_output = normalize_content_output(cached_output, topic=topic)
                 validate_content_output(cached_output)
                 print(f"[cache hit] {skill['name']}: {topic_label}")
                 return cached_output
@@ -281,6 +320,7 @@ def generate_sub_contents_for_topic(
         model_name=model_name,
         skill_path=skill["skill_path"],
     )
+    output = normalize_content_output(output, topic=topic)
     validate_content_output(output)
 
     if skill.get("cacheable", False):
