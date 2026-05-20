@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Content Generation Cache Input",
+  "type": "object",
+  "required": [
+    "course_title",
+    "topic_title",
+    "topic_description",
+    "difficulty_level",
+    "estimated_duration",
+    "output_format"
+  ],
+  "properties": {
+    "course_title": {
+      "type": "string"
+    },
+    "topic_title": {
+      "type": "string"
+    },
+    "topic_description": {
+      "type": "string"
+    },
+    "topic_learning_objectives": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "difficulty_level": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "estimated_duration": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "learning_style": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hours_per_week": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "personal_parameters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "goals": {
+      "type": "array"
+    },
+    "assessments": {
+      "type": "array"
+    },
+    "output_format": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Content Generation Cached Output",
+  "type": "object",
+  "required": [
+    "topic_title",
+    "sub_contents"
+  ],
+  "properties": {
+    "topic_title": {
+      "type": "string"
+    },
+    "sub_contents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "content_title",
+          "content_text"
+        ],
+        "properties": {
+          "content_title": {
+            "type": "string"
+          },
+          "content_text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
