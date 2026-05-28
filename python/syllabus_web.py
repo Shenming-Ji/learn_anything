@@ -5,7 +5,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from syllabus_service import DEFAULT_INPUT_PATH, call_coach, generate_syllabus, load_payload
+from syllabus_service import (
+    DEFAULT_INPUT_PATH,
+    build_outline_preview,
+    call_coach,
+    generate_course_details,
+    generate_syllabus,
+    generate_syllabus_outline,
+    load_payload,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -81,6 +89,14 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
 
+        if parsed.path == "/api/generate-outline":
+            self._generate_outline()
+            return
+
+        if parsed.path == "/api/generate-details":
+            self._generate_details()
+            return
+
         if parsed.path == "/api/generate":
             self._generate_syllabus()
             return
@@ -116,17 +132,8 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
         self._send_json({"payload": payload})
 
     def _generate_syllabus(self):
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            self._send_json({"error": "Invalid Content-Length header."}, status=HTTPStatus.BAD_REQUEST)
-            return
-
-        try:
-            raw_body = self.rfile.read(content_length).decode("utf-8")
-            request_data = json.loads(raw_body) if raw_body else {}
-        except json.JSONDecodeError:
-            self._send_json({"error": "Request body must be valid JSON."}, status=HTTPStatus.BAD_REQUEST)
+        request_data = self._read_json_body()
+        if request_data is None:
             return
 
         try:
@@ -141,18 +148,65 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
 
         self._send_json({"payload": payload, "output": output})
 
-    def _handle_coach(self):
+    def _generate_outline(self):
+        request_data = self._read_json_body()
+        if request_data is None:
+            return
+
+        try:
+            payload = build_payload_from_form(request_data)
+            syllabus = generate_syllabus_outline(payload)
+            output = build_outline_preview(payload, syllabus)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        except Exception as exc:  # pragma: no cover
+            self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        self._send_json({"payload": payload, "syllabus": syllabus, "output": output})
+
+    def _generate_details(self):
+        request_data = self._read_json_body()
+        if request_data is None:
+            return
+
+        try:
+            payload = build_payload_from_form(request_data.get("payload", {}))
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        syllabus = request_data.get("syllabus")
+        if not isinstance(syllabus, dict) or not syllabus:
+            self._send_json({"error": "syllabus is required."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            output = generate_course_details(payload, syllabus)
+        except Exception as exc:  # pragma: no cover
+            self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        self._send_json({"payload": payload, "syllabus": syllabus, "output": output})
+
+    def _read_json_body(self):
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             self._send_json({"error": "Invalid Content-Length header."}, status=HTTPStatus.BAD_REQUEST)
-            return
+            return None
 
         try:
             raw_body = self.rfile.read(content_length).decode("utf-8")
-            request_data = json.loads(raw_body) if raw_body else {}
+            return json.loads(raw_body) if raw_body else {}
         except json.JSONDecodeError:
             self._send_json({"error": "Request body must be valid JSON."}, status=HTTPStatus.BAD_REQUEST)
+            return None
+
+    def _handle_coach(self):
+        request_data = self._read_json_body()
+        if request_data is None:
             return
 
         message = str(request_data.get("message", "")).strip()

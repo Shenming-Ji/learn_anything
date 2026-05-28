@@ -232,6 +232,12 @@ def call_sub_content_generation_llm(topic, course_context, client, model_name, s
 
 
 def merge_generated_sections(payload, syllabus, content):
+    output = build_outline_preview(payload, syllabus)
+    output["content"] = content
+    return output
+
+
+def build_outline_preview(payload, syllabus):
     return {
         "topic": syllabus.get("topic", payload.get("target_skill")),
         "duration_weeks": payload.get("duration_weeks"),
@@ -242,7 +248,6 @@ def merge_generated_sections(payload, syllabus, content):
         "pedagogical_style": syllabus.get("pedagogical_style"),
         "goals": syllabus.get("goals", []),
         "syllabus": syllabus.get("syllabus", []),
-        "content": content,
     }
 
 
@@ -419,12 +424,25 @@ def call_coach(course, message, client=None, model_name="gemini-2.5-flash"):
     return response.text.strip()
 
 
+def generate_course_details(payload, syllabus, client=None, model_name="gemini-2.5-flash", cache_dir=None):
+    if client is None:
+        client = build_client()
+
+    content = generate_content_plan(payload, syllabus, client=client, model_name=model_name)
+    output = merge_generated_sections(payload, syllabus, content)
+    output = add_sub_contents(output, client=client, model_name=model_name, cache_dir=cache_dir)
+    return add_images(output)
+
+
 def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash", cache_dir=None):
     if client is None:
         client = build_client()
 
     syllabus = generate_syllabus_outline(payload, client=client, model_name=model_name)
-    content = generate_content_plan(payload, syllabus, client=client, model_name=model_name)
-    output = merge_generated_sections(payload, syllabus, content)
-    output = add_sub_contents(output, client=client, model_name=model_name, cache_dir=cache_dir)
-    return add_images(output)
+    return generate_course_details(
+        payload,
+        syllabus,
+        client=client,
+        model_name=model_name,
+        cache_dir=cache_dir,
+    )

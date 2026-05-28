@@ -287,6 +287,26 @@
       color: #a11d33;
     }
 
+    .review-actions {
+      display: none;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    .review-actions.is-visible {
+      display: flex;
+    }
+
+    .review-note {
+      width: 100%;
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
     .output-stack {
       display: grid;
       gap: 18px;
@@ -835,7 +855,7 @@
           </label>
 
           <div class="actions">
-            <button class="primary-button" id="generate-button" type="submit">Generate Syllabus</button>
+            <button class="primary-button" id="generate-button" type="submit">Generate Outline</button>
             <button class="secondary-button" id="clear-button" type="button">Clear Form</button>
           </div>
         </form>
@@ -855,7 +875,12 @@
             <span class="card-label" id="result-badge">Waiting for input</span>
           </div>
           <div id="readable-output" class="placeholder">
-            Generate a course to see a readable summary of the syllabus, goals, weekly flow, and topic content.
+            Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.
+          </div>
+          <div id="review-actions" class="review-actions">
+            <p class="review-note">Review the outline first. If it looks right, continue to generate topics, detailed content, assessments, and images.</p>
+            <button class="primary-button" id="approve-outline-button" type="button">Generate Full Course</button>
+            <button class="secondary-button" id="regenerate-outline-button" type="button">Re-generate Outline</button>
           </div>
         </section>
 
@@ -905,12 +930,17 @@
     const resultBadge = document.getElementById("result-badge");
     const generateButton = document.getElementById("generate-button");
     const clearButton = document.getElementById("clear-button");
+    const reviewActions = document.getElementById("review-actions");
+    const approveOutlineButton = document.getElementById("approve-outline-button");
+    const regenerateOutlineButton = document.getElementById("regenerate-outline-button");
     const coachPanel = document.getElementById("coach-panel");
     const coachMessages = document.getElementById("coach-messages");
     const coachInput = document.getElementById("coach-input");
     const coachSend = document.getElementById("coach-send");
     const coachToggle = document.getElementById("coach-toggle");
     let currentCourse = null;
+    let currentPayload = null;
+    let currentOutline = null;
 
     const fields = {
       target_skill: document.getElementById("target-skill"),
@@ -1070,6 +1100,87 @@
       `;
     }
 
+    function renderOutlineOutput(output) {
+      const goals = output.goals || [];
+      const weeks = output.syllabus || [];
+      const preferences = output.personal_parameters || [];
+
+      const summaryCards = `
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span>Course Topic</span>
+            <strong>${escapeHtml(output.topic || "Untitled")}</strong>
+          </div>
+          <div class="summary-card">
+            <span>Duration</span>
+            <strong>${escapeHtml(output.duration_weeks || 0)} weeks</strong>
+          </div>
+          <div class="summary-card">
+            <span>Difficulty</span>
+            <strong>${escapeHtml(output.difficulty_level || "-")}</strong>
+          </div>
+          <div class="summary-card">
+            <span>Weekly Plan</span>
+            <strong>${escapeHtml(weeks.length)}</strong>
+          </div>
+        </div>
+      `;
+
+      const pedagogySection = `
+        <section>
+          <div class="section-header">
+            <h3>Teaching Approach</h3>
+            <span class="card-label">Outline preview</span>
+          </div>
+          <div class="summary-card">
+            <p class="card-copy">${escapeHtml(output.pedagogical_style || "No pedagogical style generated yet.")}</p>
+          </div>
+        </section>
+      `;
+
+      const preferencesSection = `
+        <section>
+          <div class="section-header">
+            <h3>Learner Preferences</h3>
+            <span class="card-label">${preferences.length} items</span>
+          </div>
+          <div class="summary-card">${renderList(preferences)}</div>
+        </section>
+      `;
+
+      const goalsSection = `
+        <section>
+          <div class="section-header">
+            <h3>Goals</h3>
+            <span class="card-label">${goals.length} items</span>
+          </div>
+          <div class="summary-card">${renderList(goals)}</div>
+        </section>
+      `;
+
+      const weeksSection = `
+        <section>
+          <div class="section-header">
+            <h3>Weekly Syllabus</h3>
+            <span class="card-label">${weeks.length} weeks</span>
+          </div>
+          <div class="list-stack">
+            ${weeks.map((week) => `
+              <article class="week-card">
+                <span class="card-label">Week ${escapeHtml(week.week || "?")}</span>
+                <h4 class="card-title">${escapeHtml(week.topic || "Untitled week")}</h4>
+                <p class="card-copy"><strong>Learning objectives</strong></p>
+                ${renderList(week.learning_objectives || [])}
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      `;
+
+      readableOutput.className = "output-stack";
+      readableOutput.innerHTML = summaryCards + pedagogySection + preferencesSection + goalsSection + weeksSection;
+    }
+
     function renderReadableOutput(output) {
       const goals = output.goals || [];
       const weeks = output.syllabus || [];
@@ -1178,6 +1289,21 @@
       readableOutput.innerHTML = summaryCards + goalsSection + weeksSection + contentSection;
     }
 
+    function setReviewActionsVisible(visible) {
+      reviewActions.classList.toggle("is-visible", visible);
+    }
+
+    function invalidateGeneratedState(message = "Form changed. Generate a new outline to continue.") {
+      if (!currentOutline && !currentCourse) return;
+      currentCourse = null;
+      currentPayload = null;
+      currentOutline = null;
+      setReviewActionsVisible(false);
+      coachPanel.style.display = "none";
+      resultBadge.textContent = "Draft changed";
+      setStatus(message);
+    }
+
     function fillForm(payload) {
       fields.target_skill.value = payload.target_skill || "";
       fields.duration_weeks.value = payload.duration_weeks || "";
@@ -1198,23 +1324,38 @@
       }
 
       fillForm(data.payload);
+      currentCourse = null;
+      currentPayload = null;
+      currentOutline = null;
+      outputJson.textContent = "{}";
+      readableOutput.className = "placeholder";
+      readableOutput.textContent = "Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.";
+      setReviewActionsVisible(false);
+      coachPanel.style.display = "none";
       setStatus(`Loaded sample: ${sampleName}.`);
       resultBadge.textContent = "Sample loaded";
     }
 
-    async function generateSyllabus(event) {
-      event.preventDefault();
+    async function generateOutline(event) {
+      if (event) event.preventDefault();
       if (generateButton.disabled) return;
       updateInputPreview();
 
-      setStatus("Generating syllabus and content. This can take a little while...");
-      resultBadge.textContent = "Generating";
+      setStatus("Generating syllabus outline for review...");
+      resultBadge.textContent = "Generating outline";
       generateButton.disabled = true;
       generateButton.setAttribute("aria-busy", "true");
-      generateButton.textContent = "Generating...";
+      generateButton.textContent = "Generating Outline...";
+      approveOutlineButton.disabled = true;
+      regenerateOutlineButton.disabled = true;
+      currentCourse = null;
+      currentPayload = null;
+      currentOutline = null;
+      coachPanel.style.display = "none";
+      setReviewActionsVisible(false);
 
       try {
-        const response = await fetch("/api/generate", {
+        const response = await fetch("/api/generate-outline", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -1234,19 +1375,70 @@
           throw new Error(data.error || "Generation failed.");
         }
 
+        currentPayload = data.payload;
+        currentOutline = data.syllabus;
         outputJson.textContent = JSON.stringify(data.output, null, 2);
-        renderReadableOutput(data.output);
-        setStatus("Generation complete.");
-        resultBadge.textContent = "Generated";
-        currentCourse = data.output;
-        coachPanel.style.display = "flex";
+        renderOutlineOutput(data.output);
+        setStatus("Outline ready. Review it, then continue or re-generate.");
+        resultBadge.textContent = "Review outline";
+        approveOutlineButton.disabled = false;
+        regenerateOutlineButton.disabled = false;
+        setReviewActionsVisible(true);
       } catch (error) {
         setStatus(error.message, true);
         resultBadge.textContent = "Error";
       } finally {
         generateButton.disabled = false;
         generateButton.setAttribute("aria-busy", "false");
-        generateButton.textContent = "Generate Syllabus";
+        generateButton.textContent = "Generate Outline";
+      }
+    }
+
+    async function generateCourseDetails() {
+      if (approveOutlineButton.disabled || !currentPayload || !currentOutline) return;
+
+      setStatus("Generating topics, detailed content, assessments, and images...");
+      resultBadge.textContent = "Generating full course";
+      approveOutlineButton.disabled = true;
+      regenerateOutlineButton.disabled = true;
+      generateButton.disabled = true;
+      generateButton.setAttribute("aria-busy", "true");
+      generateButton.textContent = "Generating Full Course...";
+
+      try {
+        const response = await fetch("/api/generate-details", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            payload: currentPayload,
+            syllabus: currentOutline,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Detailed generation failed.");
+        }
+
+        outputJson.textContent = JSON.stringify(data.output, null, 2);
+        renderReadableOutput(data.output);
+        setStatus("Full course generation complete.");
+        resultBadge.textContent = "Generated";
+        currentCourse = data.output;
+        setReviewActionsVisible(false);
+        coachPanel.style.display = "flex";
+      } catch (error) {
+        setStatus(error.message, true);
+        resultBadge.textContent = "Outline ready";
+        approveOutlineButton.disabled = false;
+        regenerateOutlineButton.disabled = false;
+        setReviewActionsVisible(true);
+      } finally {
+        generateButton.disabled = false;
+        generateButton.setAttribute("aria-busy", "false");
+        generateButton.textContent = "Generate Outline";
       }
     }
 
@@ -1254,20 +1446,35 @@
       form.reset();
       fields.difficulty_level.value = "2";
       fields.learning_style.value = "practical";
+      currentCourse = null;
+      currentPayload = null;
+      currentOutline = null;
+      approveOutlineButton.disabled = true;
+      regenerateOutlineButton.disabled = true;
       updateInputPreview();
       outputJson.textContent = "{}";
       readableOutput.className = "placeholder";
-      readableOutput.textContent = "Generate a course to see a readable summary of the syllabus, goals, weekly flow, and topic content.";
+      readableOutput.textContent = "Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.";
+      setReviewActionsVisible(false);
+      coachPanel.style.display = "none";
       resultBadge.textContent = "Waiting for input";
       setStatus("Form cleared.");
     }
 
-    form.addEventListener("submit", generateSyllabus);
+    form.addEventListener("submit", generateOutline);
     clearButton.addEventListener("click", clearForm);
+    approveOutlineButton.addEventListener("click", generateCourseDetails);
+    regenerateOutlineButton.addEventListener("click", generateOutline);
 
     for (const input of Object.values(fields)) {
-      input.addEventListener("input", updateInputPreview);
-      input.addEventListener("change", updateInputPreview);
+      input.addEventListener("input", () => {
+        updateInputPreview();
+        invalidateGeneratedState();
+      });
+      input.addEventListener("change", () => {
+        updateInputPreview();
+        invalidateGeneratedState();
+      });
     }
 
     for (const button of document.querySelectorAll("[data-sample]")) {

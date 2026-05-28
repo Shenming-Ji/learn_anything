@@ -300,6 +300,63 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn("1.1 Robotics Foundations", third_call["contents"])
         self.assertIn("Return JSON only", third_call["contents"])
 
+    def test_build_outline_preview_uses_payload_and_syllabus_fields(self):
+        payload = {
+            "target_skill": "Intro to robotics",
+            "duration_weeks": 6,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": ["Hands-on learner"],
+        }
+        syllabus = {
+            "topic": "Intro to robotics",
+            "pedagogical_style": "Hands-on and structured.",
+            "goals": ["Understand core robotics concepts"],
+            "syllabus": [{"week": 1, "topic": "Foundations", "learning_objectives": [], "assessments": []}],
+        }
+
+        preview = syllabus_service.build_outline_preview(payload, syllabus)
+
+        self.assertEqual(preview["topic"], "Intro to robotics")
+        self.assertEqual(preview["duration_weeks"], 6)
+        self.assertEqual(preview["pedagogical_style"], "Hands-on and structured.")
+        self.assertNotIn("content", preview)
+
+    def test_generate_course_details_uses_existing_outline(self):
+        payload = {
+            "target_skill": "Intro to robotics",
+            "duration_weeks": 6,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": ["Hands-on learner"],
+        }
+        syllabus = {
+            "topic": "Intro to robotics",
+            "pedagogical_style": "Hands-on and structured.",
+            "goals": ["Understand core robotics concepts"],
+            "syllabus": [{"week": 1, "topic": "Foundations", "learning_objectives": [], "assessments": []}],
+        }
+        content = {
+            "skill_name": "content_generator",
+            "description": "A structured robotics content plan aligned to the syllabus.",
+            "difficulty_level": "2",
+            "target_audience": "Beginner undergraduate learners",
+            "topics": [],
+        }
+
+        with patch.object(syllabus_service, "generate_content_plan", return_value=content) as generate_content_mock, \
+             patch.object(syllabus_service, "add_sub_contents", side_effect=lambda output, **_: output) as add_sub_contents_mock, \
+             patch.object(syllabus_service, "add_images", side_effect=lambda output: output) as add_images_mock:
+            output = syllabus_service.generate_course_details(payload, syllabus, client=object())
+
+        generate_content_mock.assert_called_once()
+        add_sub_contents_mock.assert_called_once()
+        add_images_mock.assert_called_once()
+        self.assertEqual(output["content"]["skill_name"], "content_generator")
+        self.assertEqual(output["topic"], "Intro to robotics")
+
     def test_generate_sub_contents_for_topic_uses_cache_after_first_run(self):
         topic = {
             "topic_title": "1.1 Linear Regression",
@@ -967,6 +1024,123 @@ class CoachTests(unittest.TestCase):
 
         self.assertIn("error", sent["data"])
 
+    def test_web_handler_generate_outline_returns_preview(self):
+        outline = {
+            "topic": "ML",
+            "pedagogical_style": "Practical and structured.",
+            "goals": ["Understand regression"],
+            "syllabus": [{"week": 1, "topic": "Linear Regression", "learning_objectives": [], "assessments": []}],
+        }
+        preview = {
+            "topic": "ML",
+            "duration_weeks": 4,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": [],
+            "pedagogical_style": "Practical and structured.",
+            "goals": ["Understand regression"],
+            "syllabus": [{"week": 1, "topic": "Linear Regression", "learning_objectives": [], "assessments": []}],
+        }
+
+        with patch.object(syllabus_web, "generate_syllabus_outline", return_value=outline), \
+             patch.object(syllabus_web, "build_outline_preview", return_value=preview):
+            handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+            sent = {}
+
+            def fake_send_json(data, status=200):
+                sent["data"] = data
+                sent["status"] = status
+
+            handler._send_json = fake_send_json
+            body = json.dumps({
+                "target_skill": "ML",
+                "duration_weeks": 4,
+                "difficulty_level": 2,
+                "learning_style": "practical",
+                "hours_per_week": 5,
+                "personal_parameters": [],
+            }).encode()
+            handler.rfile = io.BytesIO(body)
+            handler.headers = {"Content-Length": str(len(body))}
+            handler._generate_outline()
+
+        self.assertEqual(sent["status"], 200)
+        self.assertEqual(sent["data"]["syllabus"], outline)
+        self.assertEqual(sent["data"]["output"], preview)
+
+    def test_web_handler_generate_details_requires_syllabus(self):
+        handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+        sent = {}
+
+        def fake_send_json(data, status=200):
+            sent["data"] = data
+            sent["status"] = status
+
+        handler._send_json = fake_send_json
+        body = json.dumps({
+            "payload": {
+                "target_skill": "ML",
+                "duration_weeks": 4,
+                "difficulty_level": 2,
+                "learning_style": "practical",
+                "hours_per_week": 5,
+                "personal_parameters": [],
+            }
+        }).encode()
+        handler.rfile = io.BytesIO(body)
+        handler.headers = {"Content-Length": str(len(body))}
+        handler._generate_details()
+
+        self.assertEqual(sent["status"], 400)
+        self.assertIn("syllabus", sent["data"]["error"])
+
+    def test_web_handler_generate_details_returns_full_output(self):
+        fake_output = {
+            "topic": "ML",
+            "duration_weeks": 4,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": [],
+            "pedagogical_style": "Practical and structured.",
+            "goals": ["Understand regression"],
+            "syllabus": [{"week": 1, "topic": "Linear Regression", "learning_objectives": [], "assessments": []}],
+            "content": {"topics": []},
+        }
+
+        with patch.object(syllabus_web, "generate_course_details", return_value=fake_output):
+            handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+            sent = {}
+
+            def fake_send_json(data, status=200):
+                sent["data"] = data
+                sent["status"] = status
+
+            handler._send_json = fake_send_json
+            body = json.dumps({
+                "payload": {
+                    "target_skill": "ML",
+                    "duration_weeks": 4,
+                    "difficulty_level": 2,
+                    "learning_style": "practical",
+                    "hours_per_week": 5,
+                    "personal_parameters": [],
+                },
+                "syllabus": {
+                    "topic": "ML",
+                    "pedagogical_style": "Practical and structured.",
+                    "goals": ["Understand regression"],
+                    "syllabus": [{"week": 1, "topic": "Linear Regression", "learning_objectives": [], "assessments": []}],
+                },
+            }).encode()
+            handler.rfile = io.BytesIO(body)
+            handler.headers = {"Content-Length": str(len(body))}
+            handler._generate_details()
+
+        self.assertEqual(sent["status"], 200)
+        self.assertEqual(sent["data"]["output"], fake_output)
+
     def test_build_coach_prompt_with_mc_assessments(self):
         course = self._sample_course()
         course["content"]["topics"][0]["assessments"] = [{
@@ -987,6 +1161,10 @@ class CoachTests(unittest.TestCase):
         self.assertIn("coach-toggle", html)
         self.assertIn("setCoachCollapsed", html)
         self.assertIn("sendCoachMessage", html)
+        self.assertIn("review-actions", html)
+        self.assertIn("generateCourseDetails", html)
+        self.assertIn("/api/generate-outline", html)
+        self.assertIn("/api/generate-details", html)
         self.assertIn('if (generateButton.disabled) return;', html)
         self.assertIn('generateButton.setAttribute("aria-busy", "true")', html)
         self.assertIn("Learning Coach", html)
