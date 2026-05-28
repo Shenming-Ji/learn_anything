@@ -16,6 +16,13 @@ import syllabus_service
 import content_cache_demo
 import syllabus_web
 from pipeline.cache_manager import make_cache_key
+from pipeline.image_fetcher import (
+    _build_query,
+    _clean_topic_title,
+    _extract_key_terms,
+    _is_relevant,
+    fetch_topic_images,
+)
 from pipeline.skill_registry import get_skill
 
 
@@ -576,6 +583,459 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(output["topic"], "Laser and optical systems in space")
         self.assertEqual(len(output["syllabus"]), 1)
         self.assertEqual(output["content"]["skill_name"], "content_generator")
+
+
+class ImageFetcherTests(unittest.TestCase):
+    def test_clean_topic_title_removes_numeric_prefix(self):
+        self.assertEqual(_clean_topic_title("1.1 Foundations of Optical Systems"), "Foundations of Optical Systems")
+        self.assertEqual(_clean_topic_title("3.2 Space Debris Tracking"), "Space Debris Tracking")
+
+    def test_clean_topic_title_leaves_unprefixed_titles_unchanged(self):
+        self.assertEqual(_clean_topic_title("Optical Systems"), "Optical Systems")
+        self.assertEqual(_clean_topic_title(""), "")
+
+    def test_fetch_topic_images_returns_empty_list_on_network_error(self):
+        with patch("pipeline.image_fetcher.urllib.request.urlopen", side_effect=OSError("network error")):
+            result = fetch_topic_images("1.1 Optical Foundations")
+        self.assertEqual(result, [])
+
+    def test_fetch_topic_images_returns_empty_list_for_empty_title(self):
+        result = fetch_topic_images("")
+        self.assertEqual(result, [])
+
+    def test_fetch_topic_images_returns_correct_structure(self):
+        search_response = json.dumps({
+            "query": {
+                "search": [
+                    {"title": "Optics"},
+                    {"title": "Lens"},
+                ]
+            }
+        }).encode()
+        thumbnail_response = json.dumps({
+            "query": {
+                "pages": {
+                    "1": {
+                        "title": "Optics",
+                        "thumbnail": {"source": "https://upload.wikimedia.org/optics.jpg"},
+                    },
+                    "2": {
+                        "title": "Lens",
+                        "thumbnail": {"source": "https://upload.wikimedia.org/lens.jpg"},
+                    },
+                }
+            }
+        }).encode()
+
+        call_state = {"count": 0}
+
+        class FakeResponse:
+            def __init__(self, data):
+                self._data = data
+            def read(self):
+                return self._data
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        def fake_urlopen(req, timeout=None):
+            call_state["count"] += 1
+            if call_state["count"] == 1:
+                return FakeResponse(search_response)
+            return FakeResponse(thumbnail_response)
+
+        with patch("pipeline.image_fetcher.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = fetch_topic_images("1.1 Optical Foundations", max_images=3)
+
+        self.assertIsInstance(result, list)
+        self.assertGreater(len(result), 0)
+        for image in result:
+            self.assertIn("image_title", image)
+            self.assertIn("image_url", image)
+            self.assertTrue(image["image_url"].startswith("https://"))
+
+    def test_fetch_topic_images_respects_max_images_limit(self):
+        search_response = json.dumps({
+            "query": {
+                "search": [{"title": f"Page {i}"} for i in range(5)]
+            }
+        }).encode()
+        pages = {
+            str(i): {
+                "title": f"Page {i}",
+                "thumbnail": {"source": f"https://upload.wikimedia.org/page{i}.jpg"},
+            }
+            for i in range(5)
+        }
+        thumbnail_response = json.dumps({"query": {"pages": pages}}).encode()
+
+        call_state = {"count": 0}
+
+        class FakeResponse:
+            def __init__(self, data):
+                self._data = data
+            def read(self):
+                return self._data
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        def fake_urlopen(req, timeout=None):
+            call_state["count"] += 1
+            if call_state["count"] == 1:
+                return FakeResponse(search_response)
+            return FakeResponse(thumbnail_response)
+
+        with patch("pipeline.image_fetcher.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = fetch_topic_images("Some Topic", max_images=2)
+
+        self.assertLessEqual(len(result), 2)
+
+    def test_fetch_topic_images_skips_pages_without_thumbnails(self):
+        search_response = json.dumps({
+            "query": {"search": [{"title": "No Image Page"}, {"title": "Has Image"}]}
+        }).encode()
+        thumbnail_response = json.dumps({
+            "query": {
+                "pages": {
+                    "1": {"title": "No Image Page"},
+                    "2": {
+                        "title": "Has Image",
+                        "thumbnail": {"source": "https://upload.wikimedia.org/img.jpg"},
+                    },
+                }
+            }
+        }).encode()
+
+        call_state = {"count": 0}
+
+        class FakeResponse:
+            def __init__(self, data):
+                self._data = data
+            def read(self):
+                return self._data
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        def fake_urlopen(req, timeout=None):
+            call_state["count"] += 1
+            if call_state["count"] == 1:
+                return FakeResponse(search_response)
+            return FakeResponse(thumbnail_response)
+
+        with patch("pipeline.image_fetcher.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = fetch_topic_images("Some Topic")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["image_title"], "Has Image")
+
+    def test_add_images_injects_images_field_into_each_topic(self):
+        output = {
+            "content": {
+                "topics": [
+                    {"topic_title": "1.1 Optical Foundations"},
+                    {"topic_title": "1.2 Laser Systems"},
+                ]
+            }
+        }
+
+        def fake_fetch(topic_title, topic_description="", max_images=3):
+            return [{"image_title": "Mock", "image_url": "https://upload.wikimedia.org/mock.jpg"}]
+
+        with patch("pipeline.image_fetcher.fetch_topic_images", side_effect=fake_fetch):
+            result = syllabus_service.add_images(output)
+
+        for topic in result["content"]["topics"]:
+            self.assertIn("images", topic)
+            self.assertIsInstance(topic["images"], list)
+
+    def test_add_images_is_safe_when_content_has_no_topics(self):
+        output = {"content": {}}
+        result = syllabus_service.add_images(output)
+        self.assertIn("content", result)
+
+    def test_extract_key_terms_removes_stopwords_and_short_tokens(self):
+        terms = _extract_key_terms("the optical systems and a laser")
+        self.assertIn("optical", terms)
+        self.assertIn("systems", terms)
+        self.assertIn("laser", terms)
+        self.assertNotIn("the", terms)
+        self.assertNotIn("and", terms)
+        self.assertNotIn("a", terms)
+
+    def test_build_query_combines_title_and_description(self):
+        q = _build_query("1.1 Optical Foundations", "Cover basic principles of optics")
+        self.assertIn("Optical Foundations", q)
+        self.assertIn("Cover basic principles", q)
+        self.assertNotIn("1.1", q)
+
+    def test_build_query_uses_only_title_when_no_description(self):
+        q = _build_query("1.1 Optical Foundations")
+        self.assertEqual(q, "Optical Foundations")
+
+    def test_build_query_strips_numeric_prefix(self):
+        self.assertEqual(_build_query("3.2 Space Debris"), "Space Debris")
+
+    def test_is_relevant_accepts_root_matched_terms(self):
+        # "optical" and "optics" share root "optic"
+        self.assertTrue(_is_relevant("Optics", {"optical", "systems"}))
+
+    def test_is_relevant_rejects_disambiguation_pages(self):
+        self.assertFalse(_is_relevant("Optics (disambiguation)", {"optical"}))
+
+    def test_is_relevant_rejects_titles_with_no_shared_root(self):
+        self.assertFalse(_is_relevant("History of ancient Rome", {"optical", "laser", "space"}))
+
+    def test_is_relevant_accepts_exact_match(self):
+        self.assertTrue(_is_relevant("Laser", {"laser", "space"}))
+
+    def test_fetch_topic_images_passes_description_to_query(self):
+        queries_seen = []
+
+        search_response = json.dumps({"query": {"search": []}}).encode()
+
+        class FakeResponse:
+            def __init__(self, data):
+                self._data = data
+            def read(self):
+                return self._data
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+
+        def fake_urlopen(req, timeout=None):
+            queries_seen.append(req.full_url)
+            return FakeResponse(search_response)
+
+        with patch("pipeline.image_fetcher.urllib.request.urlopen", side_effect=fake_urlopen):
+            fetch_topic_images("1.1 Optical Foundations", "Cover basic optical principles")
+
+        self.assertTrue(len(queries_seen) > 0)
+        self.assertIn("Optical+Foundations", queries_seen[0].replace("%20", "+").replace(" ", "+"))
+
+    def test_add_images_passes_description_to_fetcher(self):
+        output = {
+            "content": {
+                "topics": [
+                    {"topic_title": "1.1 Laser Systems", "topic_description": "Introduction to lasers"},
+                ]
+            }
+        }
+        calls = []
+
+        def fake_fetch(topic_title, topic_description="", max_images=3):
+            calls.append((topic_title, topic_description))
+            return []
+
+        with patch("pipeline.image_fetcher.fetch_topic_images", side_effect=fake_fetch):
+            syllabus_service.add_images(output)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "1.1 Laser Systems")
+        self.assertEqual(calls[0][1], "Introduction to lasers")
+
+    def test_syllabus_web_html_contains_render_images_function(self):
+        html = (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
+        self.assertIn("function renderImages", html)
+        self.assertIn("image-grid", html)
+        self.assertIn("image-card", html)
+        self.assertIn("image_url", html)
+        self.assertIn("image_title", html)
+
+
+class CoachTests(unittest.TestCase):
+    def _sample_course(self):
+        return {
+            "topic": "Machine Learning",
+            "duration_weeks": 4,
+            "difficulty_level": 2,
+            "goals": ["Understand supervised learning"],
+            "syllabus": [
+                {
+                    "week": 1,
+                    "topic": "Linear Regression",
+                    "learning_objectives": ["Explain the regression line"],
+                    "assessments": ["Describe the slope of a regression."],
+                }
+            ],
+            "content": {
+                "topics": [
+                    {
+                        "topic_title": "1.1 Linear Regression",
+                        "topic_description": "Intro to regression.",
+                        "estimated_hours": 4,
+                        "assessments": [{"assessment_type": "short_answer", "assessment_description": "Explain slope.", "assessment_focus": ["slope"]}],
+                        "sub_contents": [
+                            {"content_title": "Regression Intuition", "content_text": "A" * 800}
+                        ],
+                        "images": [{"image_title": "Scatter plot", "image_url": "https://upload.wikimedia.org/scatter.jpg"}],
+                    }
+                ]
+            },
+        }
+
+    def test_condense_course_removes_sub_content_text(self):
+        course = self._sample_course()
+        condensed = syllabus_service._condense_course(course)
+        topic = condensed["content"]["topics"][0]
+        self.assertNotIn("sub_contents", topic)
+        self.assertNotIn("images", topic)
+        self.assertIn("sub_content_titles", topic)
+        self.assertEqual(topic["sub_content_titles"], ["Regression Intuition"])
+
+    def test_condense_course_keeps_top_level_fields(self):
+        course = self._sample_course()
+        condensed = syllabus_service._condense_course(course)
+        self.assertEqual(condensed["topic"], "Machine Learning")
+        self.assertEqual(condensed["goals"], ["Understand supervised learning"])
+        self.assertIn("syllabus", condensed)
+
+    def test_build_coach_prompt_includes_message_and_course(self):
+        course = self._sample_course()
+        prompt = syllabus_service.build_coach_prompt(course, "Explain linear regression simply")
+        self.assertIn("linear regression", prompt.lower())
+        self.assertIn("Machine Learning", prompt)
+        self.assertIn("learning coach", prompt.lower())
+
+    def test_build_coach_prompt_does_not_include_full_sub_content_text(self):
+        course = self._sample_course()
+        prompt = syllabus_service.build_coach_prompt(course, "Help me")
+        self.assertNotIn("A" * 800, prompt)
+
+    def test_call_coach_returns_model_reply(self):
+        course = self._sample_course()
+        fake_response = SimpleNamespace(text="  Linear regression fits a line to your data.  ")
+        fake_client = SimpleNamespace(
+            models=SimpleNamespace(generate_content=lambda **_: fake_response)
+        )
+        reply = syllabus_service.call_coach(course, "Explain linear regression", client=fake_client)
+        self.assertEqual(reply, "Linear regression fits a line to your data.")
+
+    def test_call_coach_passes_prompt_with_course_and_message(self):
+        course = self._sample_course()
+        captured = {}
+
+        def fake_generate(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(text="ok")
+
+        fake_client = SimpleNamespace(models=SimpleNamespace(generate_content=fake_generate))
+        syllabus_service.call_coach(course, "Quiz me on Week 1", client=fake_client)
+
+        self.assertIn("Quiz me on Week 1", captured["contents"])
+        self.assertIn("Machine Learning", captured["contents"])
+
+    def test_web_handler_coach_returns_reply(self):
+        fake_reply = "Great question! Linear regression..."
+
+        with patch.object(syllabus_web, "call_coach", return_value=fake_reply):
+            handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+            sent = {}
+
+            def fake_send_json(data, status=200):
+                sent["data"] = data
+                sent["status"] = status
+
+            handler._send_json = fake_send_json
+            handler.headers = {"Content-Length": "0"}
+
+            body = json.dumps({"course": {"topic": "ML"}, "message": "Explain it"}).encode()
+            handler.rfile = io.BytesIO(body)
+            handler.headers = {"Content-Length": str(len(body))}
+            handler._handle_coach()
+
+        self.assertEqual(sent["data"]["reply"], fake_reply)
+
+    def test_web_handler_coach_rejects_missing_message(self):
+        handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+        sent = {}
+
+        def fake_send_json(data, status=200):
+            sent["data"] = data
+            sent["status"] = status
+
+        handler._send_json = fake_send_json
+        body = json.dumps({"course": {}, "message": "  "}).encode()
+        handler.rfile = io.BytesIO(body)
+        handler.headers = {"Content-Length": str(len(body))}
+        handler._handle_coach()
+
+        self.assertIn("error", sent["data"])
+
+    def test_build_coach_prompt_with_mc_assessments(self):
+        course = self._sample_course()
+        course["content"]["topics"][0]["assessments"] = [{
+            "assessment_type": "multiple_choice",
+            "assessment_description": "What does slope represent?",
+            "choices": ["A. Intercept", "B. Rate of change", "C. Variance", "D. Mean"],
+            "correct_answer": "B",
+            "assessment_focus": ["slope"],
+        }]
+        prompt = syllabus_service.build_coach_prompt(course, "Quiz me")
+        self.assertIn("Quiz me", prompt)
+        self.assertIn("Rate of change", prompt)
+
+    def test_syllabus_web_html_contains_coach_panel(self):
+        html = (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
+        self.assertIn("coach-panel", html)
+        self.assertIn("coach-messages", html)
+        self.assertIn("sendCoachMessage", html)
+        self.assertIn("Learning Coach", html)
+        self.assertIn("/coach", html)
+
+
+class MultipleChoiceTests(unittest.TestCase):
+    def _html(self):
+        return (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
+
+    def test_content_generator_skill_requires_mc_format(self):
+        skill_text = (Path(__file__).resolve().parents[1] / "skills" / "content_generator" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("multiple_choice", skill_text)
+        self.assertIn('"choices"', skill_text)
+        self.assertIn('"correct_answer"', skill_text)
+        self.assertIn("A.", skill_text)
+        self.assertIn("B.", skill_text)
+
+    def test_content_generator_skill_quality_checks_include_mc(self):
+        skill_text = (Path(__file__).resolve().parents[1] / "skills" / "content_generator" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("correct_answer", skill_text)
+        self.assertIn("four", skill_text.lower())
+
+    def test_html_renders_mc_choices_when_present(self):
+        html = self._html()
+        self.assertIn("renderMcChoices", html)
+        self.assertIn("mc-choices", html)
+        self.assertIn("mc-correct", html)
+        self.assertIn("mc-wrong", html)
+
+    def test_html_has_handle_mc_answer_function(self):
+        html = self._html()
+        self.assertIn("handleMcAnswer", html)
+        self.assertIn("dataset.answered", html)
+
+    def test_html_backward_compat_check_for_choices(self):
+        html = self._html()
+        self.assertIn("Array.isArray(assessment.choices)", html)
+
+    def test_assessment_details_is_collapsible(self):
+        html = self._html()
+        self.assertIn("Assessment Details", html)
+        idx_summary = html.index("Assessment Details")
+        # The summary should appear inside a <details> context
+        nearby = html[max(0, idx_summary - 200): idx_summary + 50]
+        self.assertIn("details", nearby)
+
+    def test_coach_panel_is_on_left(self):
+        html = self._html()
+        self.assertIn("left: 24px", html)
+        idx = html.index("left: 24px")
+        nearby = html[max(0, idx - 100): idx + 50]
+        self.assertIn("coach", nearby.lower())
 
 
 if __name__ == "__main__":

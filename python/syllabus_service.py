@@ -359,6 +359,66 @@ def add_sub_contents(output, client=None, model_name="gemini-2.5-flash", cache_d
     return output
 
 
+def add_images(output):
+    from pipeline.image_fetcher import fetch_topic_images
+
+    for topic in output.get("content", {}).get("topics", []):
+        topic["images"] = fetch_topic_images(
+            topic.get("topic_title", ""),
+            topic.get("topic_description", ""),
+        )
+    return output
+
+
+_COACH_SYSTEM_INSTRUCTION = (
+    "You are a concise and helpful learning coach. "
+    "Help the student understand and engage with their course material."
+)
+
+
+def _condense_course(course):
+    """Return course without lengthy sub_content text to keep coach context compact."""
+    condensed = {k: v for k, v in course.items() if k != "content"}
+    content = course.get("content", {})
+    if content:
+        condensed_topics = []
+        for topic in content.get("topics", []):
+            t = {k: v for k, v in topic.items() if k not in ("sub_contents", "images")}
+            sub_titles = [s.get("content_title", "") for s in topic.get("sub_contents", [])]
+            if sub_titles:
+                t["sub_content_titles"] = sub_titles
+            condensed_topics.append(t)
+        condensed["content"] = {k: v for k, v in content.items() if k != "topics"}
+        condensed["content"]["topics"] = condensed_topics
+    return condensed
+
+
+def build_coach_prompt(course, message):
+    course_json = json.dumps(_condense_course(course), indent=2, ensure_ascii=False)
+    return (
+        f"You are a learning coach helping a student with the following course:\n\n"
+        f"{course_json}\n\n"
+        f"Student: {message}\n\n"
+        f"Respond as a learning coach: give a direct, helpful answer. You may include "
+        f"an explanation, a practical suggestion, or a follow-up question. "
+        f"Keep your response under 250 words."
+    )
+
+
+def call_coach(course, message, client=None, model_name="gemini-2.5-flash"):
+    if client is None:
+        client = build_client()
+    response = client.models.generate_content(
+        model=model_name,
+        contents=build_coach_prompt(course, message),
+        config={
+            "system_instruction": _COACH_SYSTEM_INSTRUCTION,
+            "temperature": 0.7,
+        },
+    )
+    return response.text.strip()
+
+
 def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash", cache_dir=None):
     if client is None:
         client = build_client()
@@ -366,4 +426,5 @@ def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash", cache
     syllabus = generate_syllabus_outline(payload, client=client, model_name=model_name)
     content = generate_content_plan(payload, syllabus, client=client, model_name=model_name)
     output = merge_generated_sections(payload, syllabus, content)
-    return add_sub_contents(output, client=client, model_name=model_name, cache_dir=cache_dir)
+    output = add_sub_contents(output, client=client, model_name=model_name, cache_dir=cache_dir)
+    return add_images(output)

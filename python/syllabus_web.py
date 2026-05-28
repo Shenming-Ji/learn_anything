@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from syllabus_service import DEFAULT_INPUT_PATH, generate_syllabus, load_payload
+from syllabus_service import DEFAULT_INPUT_PATH, call_coach, generate_syllabus, load_payload
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -85,6 +85,10 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             self._generate_syllabus()
             return
 
+        if parsed.path == "/coach":
+            self._handle_coach()
+            return
+
         self._send_json({"error": "Not found."}, status=HTTPStatus.NOT_FOUND)
 
     def log_message(self, format, *args):
@@ -136,6 +140,35 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"payload": payload, "output": output})
+
+    def _handle_coach(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_json({"error": "Invalid Content-Length header."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            raw_body = self.rfile.read(content_length).decode("utf-8")
+            request_data = json.loads(raw_body) if raw_body else {}
+        except json.JSONDecodeError:
+            self._send_json({"error": "Request body must be valid JSON."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        message = str(request_data.get("message", "")).strip()
+        if not message:
+            self._send_json({"error": "message is required."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        course = request_data.get("course") or {}
+
+        try:
+            reply = call_coach(course, message)
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        self._send_json({"reply": reply})
 
     def _send_json(self, data, status=HTTPStatus.OK):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")

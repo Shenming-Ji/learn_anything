@@ -44,8 +44,15 @@ Use this exact `content` structure:
 "assessment_count": 0,
 "assessments": [
 {
-"assessment_type": "",
-"assessment_description": "",
+"assessment_type": "multiple_choice",
+"assessment_description": "<question stem>",
+"choices": [
+"A. <first option>",
+"B. <second option>",
+"C. <third option>",
+"D. <fourth option>"
+],
+"correct_answer": "<A, B, C, or D>",
 "assessment_focus": []
 }
 ]
@@ -73,10 +80,14 @@ Use this exact `content` structure:
 
 1. Each topic must have at least one assessment.
 2. `assessment_count` must match the actual number of objects in `assessments`.
-3. Assessments must be based only on the generated topic content.
-4. Each assessment should evaluate understanding, application, or synthesis of the material covered in that topic.
-5. `assessment_focus` must be an array of concise concepts or skills assessed within that topic.
-6. Do not create assessments for knowledge that was not introduced in the generated content.
+3. All assessments must be multiple-choice single-answer questions. Set `assessment_type` to `"multiple_choice"`.
+4. Each assessment must include exactly four choices labeled `"A. ..."`, `"B. ..."`, `"C. ..."`, `"D. ..."`.
+5. `correct_answer` must be exactly one of `"A"`, `"B"`, `"C"`, or `"D"`, and must correspond to the correct choice in `choices`.
+6. Distribute correct answers across A, B, C, D — do not put every correct answer on the same letter.
+7. Assessments must be based only on the generated topic content.
+8. Each assessment should evaluate understanding, application, or synthesis of the material covered in that topic.
+9. `assessment_focus` must be an array of concise concepts or skills assessed within that topic.
+10. Do not create assessments for knowledge that was not introduced in the generated content.
 
 # Quality Checks
 
@@ -90,3 +101,6 @@ Before returning the response, verify all of the following:
 6. No `sub_contents` field is included anywhere in the content output.
 7. Every assessment is supported by generated content only.
 8. The topic list stays tightly aligned to the original learning goal or syllabus input.
+9. Every assessment has `assessment_type` set to `"multiple_choice"`.
+10. Every assessment has exactly four `choices` strings labeled A through D.
+11. Every `correct_answer` is one of `"A"`, `"B"`, `"C"`, `"D"` and matches the correct choice.
