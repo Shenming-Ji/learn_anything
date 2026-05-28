@@ -509,8 +509,10 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn("function renderSubContents", html)
         self.assertIn("function summarizeText", html)
         self.assertIn("Assessment Details", html)
-        self.assertIn("Sub-content Details", html)
-        self.assertIn("Read full text", html)
+        self.assertIn("Reading Page Details", html)
+        self.assertIn("Reading Pages", html)
+        self.assertIn("Learning Page", html)
+        self.assertIn("changeSubContentPage", html)
 
     def test_build_tracking_client_counts_live_style_calls(self):
         captured_calls = []
@@ -1161,6 +1163,8 @@ class CoachTests(unittest.TestCase):
         self.assertIn("coach-toggle", html)
         self.assertIn("setCoachCollapsed", html)
         self.assertIn("sendCoachMessage", html)
+        self.assertIn("changeSubContentPage", html)
+        self.assertIn("subcontent-pager", html)
         self.assertIn("review-actions", html)
         self.assertIn("generateCourseDetails", html)
         self.assertIn("/api/generate-outline", html)
