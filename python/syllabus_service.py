@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -218,6 +220,64 @@ def validate_content_output(output):
             raise ValueError(f"Content chunk {index} is missing content text.")
 
 
+def _keyword_tokens(value):
+    if not value:
+        return set()
+    return {token for token in re.findall(r"[a-z0-9]+", str(value).lower()) if len(token) > 2}
+
+
+def _score_assessment_for_sub_content(assessment, sub_content):
+    content_tokens = _keyword_tokens(sub_content.get("content_title", ""))
+    content_tokens.update(_keyword_tokens(sub_content.get("content_text", "")))
+
+    focus_tokens = set()
+    for item in assessment.get("assessment_focus", []):
+        focus_tokens.update(_keyword_tokens(item))
+
+    description_tokens = _keyword_tokens(assessment.get("assessment_description", ""))
+    title_tokens = _keyword_tokens(sub_content.get("content_title", ""))
+
+    score = len(content_tokens & focus_tokens) * 3
+    score += len(content_tokens & description_tokens)
+    score += len(title_tokens & focus_tokens) * 2
+    return score
+
+
+def attach_page_assessments(topic):
+    if not isinstance(topic, dict):
+        return topic
+
+    sub_contents = topic.get("sub_contents")
+    raw_assessments = topic.get("assessments")
+    if not isinstance(sub_contents, list) or not isinstance(raw_assessments, list) or not raw_assessments:
+        return topic
+
+    assessments = [assessment for assessment in raw_assessments if isinstance(assessment, dict)]
+    if not assessments:
+        return topic
+
+    usage_counts = [0] * len(assessments)
+
+    for chunk in sub_contents:
+        if not isinstance(chunk, dict):
+            continue
+        if isinstance(chunk.get("page_assessment"), dict):
+            continue
+
+        best_index = max(
+            range(len(assessments)),
+            key=lambda idx: (
+                _score_assessment_for_sub_content(assessments[idx], chunk),
+                -usage_counts[idx],
+                -idx,
+            ),
+        )
+        chunk["page_assessment"] = deepcopy(assessments[best_index])
+        usage_counts[best_index] += 1
+
+    return topic
+
+
 def call_sub_content_generation_llm(topic, course_context, client, model_name, skill_path):
     response = client.models.generate_content(
         model=model_name,
@@ -360,6 +420,7 @@ def add_sub_contents(output, client=None, model_name="gemini-2.5-flash", cache_d
             cache_dir=cache_dir,
         )
         topic["sub_contents"] = sub_content_result.get("sub_contents", [])
+        attach_page_assessments(topic)
 
     return output
 

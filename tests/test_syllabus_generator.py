@@ -283,6 +283,7 @@ class SyllabusGeneratorTests(unittest.TestCase):
         topics = output["content"]["topics"]
         self.assertIn("sub_contents", topics[0])
         self.assertIsInstance(topics[0]["sub_contents"], list)
+        self.assertIn("page_assessment", topics[0]["sub_contents"][0])
 
         first_call = captured_calls[0]
         self.assertIn("week-by-week course syllabus", first_call["contents"])
@@ -421,6 +422,41 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn("[cache saved] content_generation: 1.1 Linear Regression", logs)
         self.assertIn("[cache hit] content_generation: 1.1 Linear Regression", logs)
 
+    def test_attach_page_assessments_assigns_relevant_question_to_each_page(self):
+        topic = {
+            "assessments": [
+                {
+                    "assessment_type": "multiple_choice",
+                    "assessment_description": "Which statement best describes wavelength?",
+                    "choices": ["A. Color", "B. Spatial period", "C. Brightness", "D. Power"],
+                    "correct_answer": "B",
+                    "assessment_focus": ["wavelength"],
+                },
+                {
+                    "assessment_type": "multiple_choice",
+                    "assessment_description": "Why is polarization useful in imaging?",
+                    "choices": ["A. It removes noise", "B. It reveals surface properties", "C. It slows light", "D. It changes vacuum pressure"],
+                    "correct_answer": "B",
+                    "assessment_focus": ["polarization"],
+                },
+            ],
+            "sub_contents": [
+                {
+                    "content_title": "Working with Wavelength",
+                    "content_text": "Wavelength determines how optical sensors interact with targets and the atmosphere.",
+                },
+                {
+                    "content_title": "Understanding Polarization",
+                    "content_text": "Polarization helps distinguish materials and surface reflections in remote sensing.",
+                },
+            ],
+        }
+
+        syllabus_service.attach_page_assessments(topic)
+
+        self.assertEqual(topic["sub_contents"][0]["page_assessment"]["assessment_focus"], ["wavelength"])
+        self.assertEqual(topic["sub_contents"][1]["page_assessment"]["assessment_focus"], ["polarization"])
+
     def test_content_cache_demo_runs_sample_input_twice(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             stdout = io.StringIO()
@@ -508,10 +544,13 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn("function renderAssessments", html)
         self.assertIn("function renderSubContents", html)
         self.assertIn("function summarizeText", html)
-        self.assertIn("Assessment Details", html)
+        self.assertIn("function renderMarkdownText", html)
         self.assertIn("Reading Page Details", html)
         self.assertIn("Reading Pages", html)
         self.assertIn("Learning Page", html)
+        self.assertIn("Page Check", html)
+        self.assertIn("data-page-completed", html)
+        self.assertIn("Answer correctly to continue", html)
         self.assertIn("changeSubContentPage", html)
 
     def test_build_tracking_client_counts_live_style_calls(self):
@@ -1169,10 +1208,15 @@ class CoachTests(unittest.TestCase):
         self.assertIn("generateCourseDetails", html)
         self.assertIn("/api/generate-outline", html)
         self.assertIn("/api/generate-details", html)
+        self.assertIn("setCoachCollapsed(true);", html)
         self.assertIn('if (generateButton.disabled) return;', html)
         self.assertIn('generateButton.setAttribute("aria-busy", "true")', html)
         self.assertIn("Learning Coach", html)
         self.assertIn("/coach", html)
+        self.assertNotIn("input-preview", html)
+        self.assertNotIn("output-json", html)
+        self.assertNotIn("Input JSON Preview", html)
+        self.assertNotIn("Final JSON", html)
 
 
 class MultipleChoiceTests(unittest.TestCase):

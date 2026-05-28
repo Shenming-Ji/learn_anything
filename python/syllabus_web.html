@@ -516,7 +516,57 @@
       border: 1px solid rgba(69, 47, 26, 0.08);
       color: var(--muted);
       line-height: 1.75;
-      white-space: pre-wrap;
+      white-space: normal;
+    }
+
+    .excerpt p,
+    .subcontent-text p {
+      margin: 0 0 0.9em;
+    }
+
+    .excerpt p:last-child,
+    .subcontent-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .excerpt ul,
+    .excerpt ol,
+    .subcontent-text ul,
+    .subcontent-text ol {
+      margin: 0 0 0.9em;
+      padding-left: 1.4em;
+    }
+
+    .excerpt li,
+    .subcontent-text li {
+      margin-bottom: 0.35em;
+    }
+
+    .excerpt strong,
+    .subcontent-text strong {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .excerpt em,
+    .subcontent-text em {
+      font-style: italic;
+    }
+
+    .excerpt code,
+    .subcontent-text code {
+      padding: 0.1em 0.4em;
+      border-radius: 6px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--brand-deep);
+      font-size: 0.92em;
+      font-family: var(--mono);
+    }
+
+    .page-check {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(69, 47, 26, 0.08);
     }
 
     .topic-section-toggle {
@@ -916,11 +966,6 @@
         </form>
 
         <p class="status" id="status-line"></p>
-
-        <details open>
-          <summary>Input JSON Preview</summary>
-          <pre id="input-preview">{}</pre>
-        </details>
       </aside>
 
       <main class="output-stack">
@@ -937,17 +982,6 @@
             <button class="primary-button" id="approve-outline-button" type="button">Generate Full Course</button>
             <button class="secondary-button" id="regenerate-outline-button" type="button">Re-generate Outline</button>
           </div>
-        </section>
-
-        <section class="panel">
-          <div class="section-header">
-            <h2>Final JSON</h2>
-            <span class="card-label">Backend-compatible output</span>
-          </div>
-          <details open>
-            <summary>Show Generated JSON</summary>
-            <pre id="output-json">{}</pre>
-          </details>
         </section>
       </main>
     </section>
@@ -979,8 +1013,6 @@
   <script>
     const form = document.getElementById("syllabus-form");
     const statusLine = document.getElementById("status-line");
-    const inputPreview = document.getElementById("input-preview");
-    const outputJson = document.getElementById("output-json");
     const readableOutput = document.getElementById("readable-output");
     const resultBadge = document.getElementById("result-badge");
     const generateButton = document.getElementById("generate-button");
@@ -1011,21 +1043,6 @@
         .split(/\n|,/g)
         .map((value) => value.trim())
         .filter(Boolean);
-    }
-
-    function buildFormPayload() {
-      return {
-        target_skill: fields.target_skill.value.trim(),
-        duration_weeks: fields.duration_weeks.value ? Number(fields.duration_weeks.value) : "",
-        difficulty_level: fields.difficulty_level.value ? Number(fields.difficulty_level.value) : "",
-        learning_style: fields.learning_style.value,
-        hours_per_week: fields.hours_per_week.value ? Number(fields.hours_per_week.value) : "",
-        personal_parameters: splitPersonalParameters(fields.personal_parameters.value),
-      };
-    }
-
-    function updateInputPreview() {
-      inputPreview.textContent = JSON.stringify(buildFormPayload(), null, 2);
     }
 
     function setStatus(message, isError = false) {
@@ -1108,11 +1125,85 @@
         .join(" ");
     }
 
-    function renderMcChoices(choices, correctAnswer) {
+    function formatInlineMarkdown(text) {
+      return String(text)
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>")
+        .replace(/`(.+?)`/g, "<code>$1</code>");
+    }
+
+    function renderMarkdownText(text) {
+      const escaped = escapeHtml(String(text || "").replace(/\r\n/g, "\n")).trim();
+      if (!escaped) return "";
+
+      const lines = escaped.split("\n");
+      const blocks = [];
+      let paragraphLines = [];
+      let listType = null;
+      let listItems = [];
+
+      function flushParagraph() {
+        if (paragraphLines.length === 0) return;
+        blocks.push(`<p>${formatInlineMarkdown(paragraphLines.join("<br>"))}</p>`);
+        paragraphLines = [];
+      }
+
+      function flushList() {
+        if (listItems.length === 0 || !listType) return;
+        const items = listItems.map((item) => `<li>${formatInlineMarkdown(item)}</li>`).join("");
+        blocks.push(`<${listType}>${items}</${listType}>`);
+        listType = null;
+        listItems = [];
+      }
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) {
+          flushParagraph();
+          flushList();
+          continue;
+        }
+
+        const unorderedMatch = line.match(/^[-*]\s+(.+)$/);
+        const orderedMatch = line.match(/^\d+\.\s+(.+)$/);
+
+        if (unorderedMatch) {
+          flushParagraph();
+          if (listType !== "ul") {
+            flushList();
+            listType = "ul";
+          }
+          listItems.push(unorderedMatch[1]);
+          continue;
+        }
+
+        if (orderedMatch) {
+          flushParagraph();
+          if (listType !== "ol") {
+            flushList();
+            listType = "ol";
+          }
+          listItems.push(orderedMatch[1]);
+          continue;
+        }
+
+        flushList();
+        paragraphLines.push(line);
+      }
+
+      flushParagraph();
+      flushList();
+      return blocks.join("");
+    }
+
+    function renderMcChoices(choices, correctAnswer, options = {}) {
       const keys = ["A", "B", "C", "D"];
       const safeCorrect = escapeHtml(String(correctAnswer || "").trim());
+      const gatedAttrs = options.gated
+        ? ` data-gated="true" data-pager-id="${escapeHtml(options.pagerId || "")}" data-page-index="${escapeHtml(options.pageIndex ?? "")}"`
+        : "";
       return `
-        <div class="mc-choices">
+        <div class="mc-choices"${gatedAttrs}>
           ${choices.map((choice, ci) => {
             const key = keys[ci] || String(ci + 1);
             return `<button class="mc-choice" data-key="${key}" onclick="handleMcAnswer(this,'${safeCorrect}')">${escapeHtml(choice)}</button>`;
@@ -1122,9 +1213,9 @@
       `;
     }
 
-    function renderAssessments(assessments) {
+    function renderAssessments(assessments, options = {}) {
       if (!assessments || assessments.length === 0) {
-        return "<p class=\"card-copy\">No assessments generated for this topic.</p>";
+        return `<p class="card-copy">${escapeHtml(options.emptyMessage || "No assessments generated for this topic.")}</p>`;
       }
 
       return `
@@ -1136,7 +1227,7 @@
               <article class="mini-card">
                 <span class="card-label">${escapeHtml(label)} · Q${index + 1}</span>
                 <p class="card-copy" style="margin-bottom:0">${escapeHtml(assessment.assessment_description || "")}</p>
-                ${hasChoices ? renderMcChoices(assessment.choices, assessment.correct_answer) : ""}
+                ${hasChoices ? renderMcChoices(assessment.choices, assessment.correct_answer, options) : ""}
                 ${renderFocusPills(assessment.assessment_focus || [])}
               </article>
             `;
@@ -1145,10 +1236,17 @@
       `;
     }
 
+    function countPageChecks(subContents) {
+      if (!Array.isArray(subContents)) return 0;
+      return subContents.filter((item) => item && item.page_assessment).length;
+    }
+
     function renderSubContents(subContents, pagerId) {
       if (!subContents || subContents.length === 0) {
         return "<p class=\"card-copy\">No reading pages generated for this topic.</p>";
       }
+
+      const firstPageComplete = !subContents[0].page_assessment;
 
       return `
         <div class="subcontent-pager" id="${escapeHtml(pagerId)}" data-page-index="0">
@@ -1168,17 +1266,36 @@
                 type="button"
                 data-subcontent-next
                 onclick="changeSubContentPage('${escapeHtml(pagerId)}', 1)"
-                ${subContents.length > 1 ? "" : "disabled"}
+                ${subContents.length > 1 && firstPageComplete ? "" : "disabled"}
               >Next</button>
             </div>
           </div>
           <div class="nested-stack">
           ${subContents.map((item, index) => `
-            <article class="mini-card subcontent-page ${index === 0 ? "is-active" : ""}" data-subcontent-page="${index}">
+            <article
+              class="mini-card subcontent-page ${index === 0 ? "is-active" : ""}"
+              data-subcontent-page="${index}"
+              data-page-completed="${item.page_assessment ? "false" : "true"}"
+            >
               <span class="card-label">Learning Page ${index + 1}</span>
               <h5 class="card-title">${escapeHtml(item.content_title || "Untitled lesson")}</h5>
-              <p class="excerpt">${escapeHtml(summarizeText(item.content_text || "", item.content_title || ""))}</p>
-              <div class="subcontent-text">${escapeHtml(item.content_text || "")}</div>
+              <div class="excerpt">${renderMarkdownText(summarizeText(item.content_text || "", item.content_title || ""))}</div>
+              <div class="subcontent-text">${renderMarkdownText(item.content_text || "")}</div>
+              <div class="page-check">
+                <div class="section-header">
+                  <h3>Page Check</h3>
+                  <span class="card-label">${item.page_assessment ? "Answer correctly to continue" : "No check required"}</span>
+                </div>
+                ${renderAssessments(
+                  item.page_assessment ? [item.page_assessment] : [],
+                  {
+                    gated: Boolean(item.page_assessment),
+                    pagerId,
+                    pageIndex: index,
+                    emptyMessage: "This page does not require a check before continuing.",
+                  }
+                )}
+              </div>
             </article>
           `).join("")}
           </div>
@@ -1212,7 +1329,9 @@
 
       const nextButton = pager.querySelector("[data-subcontent-next]");
       if (nextButton) {
-        nextButton.disabled = safeIndex === pages.length - 1;
+        const currentPage = pages[safeIndex];
+        const currentPageCompleted = currentPage && currentPage.dataset.pageCompleted === "true";
+        nextButton.disabled = safeIndex === pages.length - 1 || !currentPageCompleted;
       }
     }
 
@@ -1220,6 +1339,11 @@
       const pager = document.getElementById(pagerId);
       if (!pager) return;
       const currentIndex = Number(pager.dataset.pageIndex || "0");
+      const pages = Array.from(pager.querySelectorAll("[data-subcontent-page]"));
+      const currentPage = pages[currentIndex];
+      if (delta > 0 && currentPage && currentPage.dataset.pageCompleted !== "true") {
+        return;
+      }
       setSubContentPage(pagerId, currentIndex + delta);
     }
 
@@ -1402,8 +1526,8 @@
                 <p class="card-copy">${escapeHtml(topic.topic_description || "")}</p>
                 <div class="topic-meta">
                   <div class="mini-card">
-                    <span class="card-label">Assessments</span>
-                    <strong>${escapeHtml(topic.assessment_count || 0)}</strong>
+                    <span class="card-label">Page Checks</span>
+                    <strong>${escapeHtml(countPageChecks(topic.sub_contents || []))}</strong>
                   </div>
                   <div class="mini-card">
                     <span class="card-label">Reading Pages</span>
@@ -1423,14 +1547,6 @@
                   </details>
                 </section>
                 ${renderImages(topic.images || [])}
-                <section class="topic-section">
-                  <details class="topic-section-toggle">
-                    <summary>Assessment Details · ${escapeHtml((topic.assessments || []).length)} items</summary>
-                    <div class="topic-section-body">
-                      ${renderAssessments(topic.assessments || [])}
-                    </div>
-                  </details>
-                </section>
               </article>
             `).join("")}
           </div>
@@ -1463,7 +1579,6 @@
       fields.learning_style.value = payload.learning_style || "practical";
       fields.hours_per_week.value = payload.hours_per_week || "";
       fields.personal_parameters.value = (payload.personal_parameters || []).join("\n");
-      updateInputPreview();
     }
 
     async function loadSample(sampleName) {
@@ -1491,7 +1606,6 @@
     async function generateOutline(event) {
       if (event) event.preventDefault();
       if (generateButton.disabled) return;
-      updateInputPreview();
 
       setStatus("Generating syllabus outline for review...");
       resultBadge.textContent = "Generating outline";
@@ -1529,7 +1643,6 @@
 
         currentPayload = data.payload;
         currentOutline = data.syllabus;
-        outputJson.textContent = JSON.stringify(data.output, null, 2);
         renderOutlineOutput(data.output);
         setStatus("Outline ready. Review it, then continue or re-generate.");
         resultBadge.textContent = "Review outline";
@@ -1574,7 +1687,6 @@
           throw new Error(data.error || "Detailed generation failed.");
         }
 
-        outputJson.textContent = JSON.stringify(data.output, null, 2);
         renderReadableOutput(data.output);
         setStatus("Full course generation complete.");
         resultBadge.textContent = "Generated";
@@ -1603,8 +1715,6 @@
       currentOutline = null;
       approveOutlineButton.disabled = true;
       regenerateOutlineButton.disabled = true;
-      updateInputPreview();
-      outputJson.textContent = "{}";
       readableOutput.className = "placeholder";
       readableOutput.textContent = "Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.";
       setReviewActionsVisible(false);
@@ -1620,11 +1730,9 @@
 
     for (const input of Object.values(fields)) {
       input.addEventListener("input", () => {
-        updateInputPreview();
         invalidateGeneratedState();
       });
       input.addEventListener("change", () => {
-        updateInputPreview();
         invalidateGeneratedState();
       });
     }
@@ -1641,16 +1749,57 @@
 
     function handleMcAnswer(el, correctKey) {
       const container = el.closest(".mc-choices");
-      if (container.dataset.answered === "true") return;
-      container.dataset.answered = "true";
+      const isGated = container.dataset.gated === "true";
+      if (!isGated && container.dataset.answered === "true") return;
       const chosen = el.dataset.key;
       const isCorrect = chosen === correctKey;
-      container.querySelectorAll(".mc-choice").forEach((btn) => {
+      const buttons = container.querySelectorAll(".mc-choice");
+      buttons.forEach((btn) => {
+        btn.classList.remove("mc-correct", "mc-wrong");
+      });
+      const resultEl = container.querySelector(".mc-result");
+      if (isGated) {
+        const pagerId = container.dataset.pagerId;
+        const pageIndex = Number(container.dataset.pageIndex || "-1");
+        const pager = pagerId ? document.getElementById(pagerId) : null;
+        const page = pager ? pager.querySelector(`[data-subcontent-page="${pageIndex}"]`) : null;
+
+        if (isCorrect) {
+          container.dataset.answered = "true";
+          buttons.forEach((btn) => {
+            btn.disabled = true;
+            if (btn.dataset.key === correctKey) btn.classList.add("mc-correct");
+          });
+          if (page) {
+            page.dataset.pageCompleted = "true";
+          }
+          if (pagerId) {
+            setSubContentPage(pagerId, pageIndex);
+          }
+          if (resultEl) {
+            resultEl.textContent = "✅ Correct! You can continue to the next page.";
+            resultEl.className = "mc-result mc-result-correct";
+          }
+          return;
+        }
+
+        buttons.forEach((btn) => {
+          btn.disabled = false;
+        });
+        el.classList.add("mc-wrong");
+        if (resultEl) {
+          resultEl.textContent = "❌ Not quite. Try again to unlock the next page.";
+          resultEl.className = "mc-result mc-result-wrong";
+        }
+        return;
+      }
+
+      container.dataset.answered = "true";
+      buttons.forEach((btn) => {
         btn.disabled = true;
         if (btn.dataset.key === correctKey) btn.classList.add("mc-correct");
         if (btn.dataset.key === chosen && !isCorrect) btn.classList.add("mc-wrong");
       });
-      const resultEl = container.querySelector(".mc-result");
       if (resultEl) {
         resultEl.textContent = isCorrect
           ? "✅ Correct!"
@@ -1712,7 +1861,7 @@
         sendCoachMessage();
       }
     });
-    setCoachCollapsed(false);
+    setCoachCollapsed(true);
 
     fillForm({
       target_skill: "",
