@@ -203,6 +203,10 @@
       color: var(--muted);
       box-shadow: none;
       cursor: not-allowed;
+      opacity: 0.68;
+      filter: saturate(0.2);
+      transform: none;
+      pointer-events: none;
     }
 
     a.image-card {
@@ -602,6 +606,10 @@
     }
 
     .coach-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       padding: 14px 18px;
       font-weight: 700;
       font-family: var(--serif);
@@ -609,6 +617,31 @@
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       color: var(--brand-deep);
+    }
+
+    .coach-title {
+      min-width: 0;
+    }
+
+    .coach-toggle {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--brand-deep);
+      border: 1px solid rgba(15, 118, 110, 0.14);
+      box-shadow: none;
+      font-size: 0.9rem;
+      line-height: 1;
+    }
+
+    .coach-panel.is-collapsed .coach-header {
+      border-bottom: none;
+    }
+
+    .coach-panel.is-collapsed .coach-messages,
+    .coach-panel.is-collapsed .coach-input-row {
+      display: none;
     }
 
     .coach-messages {
@@ -841,7 +874,17 @@
   </div>
 
   <div id="coach-panel" class="coach-panel" style="display: none;">
-    <div class="coach-header">Learning Coach</div>
+    <div class="coach-header">
+      <span class="coach-title">Learning Coach</span>
+      <button
+        id="coach-toggle"
+        class="coach-toggle"
+        type="button"
+        aria-expanded="true"
+        aria-label="Collapse learning coach"
+        title="Collapse"
+      >-</button>
+    </div>
     <div class="coach-messages" id="coach-messages"></div>
     <div class="coach-input-row">
       <textarea
@@ -866,6 +909,7 @@
     const coachMessages = document.getElementById("coach-messages");
     const coachInput = document.getElementById("coach-input");
     const coachSend = document.getElementById("coach-send");
+    const coachToggle = document.getElementById("coach-toggle");
     let currentCourse = null;
 
     const fields = {
@@ -1160,11 +1204,13 @@
 
     async function generateSyllabus(event) {
       event.preventDefault();
+      if (generateButton.disabled) return;
       updateInputPreview();
 
       setStatus("Generating syllabus and content. This can take a little while...");
       resultBadge.textContent = "Generating";
       generateButton.disabled = true;
+      generateButton.setAttribute("aria-busy", "true");
       generateButton.textContent = "Generating...";
 
       try {
@@ -1199,6 +1245,7 @@
         resultBadge.textContent = "Error";
       } finally {
         generateButton.disabled = false;
+        generateButton.setAttribute("aria-busy", "false");
         generateButton.textContent = "Generate Syllabus";
       }
     }
@@ -1261,6 +1308,14 @@
       coachMessages.scrollTop = coachMessages.scrollHeight;
     }
 
+    function setCoachCollapsed(collapsed) {
+      coachPanel.classList.toggle("is-collapsed", collapsed);
+      coachToggle.textContent = collapsed ? "+" : "-";
+      coachToggle.setAttribute("aria-expanded", String(!collapsed));
+      coachToggle.setAttribute("aria-label", collapsed ? "Expand learning coach" : "Collapse learning coach");
+      coachToggle.setAttribute("title", collapsed ? "Expand" : "Collapse");
+    }
+
     async function sendCoachMessage() {
       const message = coachInput.value.trim();
       if (!message) return;
@@ -1289,12 +1344,16 @@
     }
 
     coachSend.addEventListener("click", sendCoachMessage);
+    coachToggle.addEventListener("click", () => {
+      setCoachCollapsed(!coachPanel.classList.contains("is-collapsed"));
+    });
     coachInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendCoachMessage();
       }
     });
+    setCoachCollapsed(false);
 
     fillForm({
       target_skill: "",

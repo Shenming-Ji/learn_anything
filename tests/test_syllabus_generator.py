@@ -984,7 +984,11 @@ class CoachTests(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
         self.assertIn("coach-panel", html)
         self.assertIn("coach-messages", html)
+        self.assertIn("coach-toggle", html)
+        self.assertIn("setCoachCollapsed", html)
         self.assertIn("sendCoachMessage", html)
+        self.assertIn('if (generateButton.disabled) return;', html)
+        self.assertIn('generateButton.setAttribute("aria-busy", "true")', html)
         self.assertIn("Learning Coach", html)
         self.assertIn("/coach", html)
 
