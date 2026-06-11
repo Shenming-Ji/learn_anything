@@ -149,7 +149,9 @@ def parse_model_response(text):
 
 
 def normalize_content_output(output, topic=None):
-    if not isinstance(output, dict):
+    if isinstance(output, list):
+        output = {"sub_contents": output}
+    elif not isinstance(output, dict):
         return output
 
     normalized_output = dict(output)
@@ -162,26 +164,86 @@ def normalize_content_output(output, topic=None):
 
     raw_sub_contents = normalized_output.get("sub_contents")
     if not isinstance(raw_sub_contents, list) or not raw_sub_contents:
-        for fallback_key in ("contents", "lessons", "sub_content", "subContent"):
+        for fallback_key in (
+            "contents",
+            "lessons",
+            "sub_content",
+            "subContent",
+            "sections",
+            "pages",
+            "lesson_pages",
+            "study_cards",
+            "cards",
+            "items",
+            "chunks",
+        ):
             fallback_value = normalized_output.get(fallback_key)
             if isinstance(fallback_value, list) and fallback_value:
                 raw_sub_contents = fallback_value
                 normalized_output["sub_contents"] = fallback_value
                 break
+            if isinstance(fallback_value, dict):
+                nested_output = normalize_content_output(fallback_value, topic=topic)
+                nested_sub_contents = (
+                    nested_output.get("sub_contents")
+                    if isinstance(nested_output, dict)
+                    else None
+                )
+                if isinstance(nested_sub_contents, list) and nested_sub_contents:
+                    raw_sub_contents = nested_sub_contents
+                    normalized_output["sub_contents"] = nested_sub_contents
+                    break
+
+    if (not isinstance(raw_sub_contents, list) or not raw_sub_contents):
+        standalone_title = (
+            normalized_output.get("content_title")
+            or normalized_output.get("title")
+            or normalized_output.get("lesson_title")
+            or normalized_output.get("section_title")
+            or normalized_output.get("heading")
+            or normalized_output.get("name")
+        )
+        standalone_text = (
+            normalized_output.get("content_text")
+            or normalized_output.get("content")
+            or normalized_output.get("text")
+            or normalized_output.get("body")
+            or normalized_output.get("explanation")
+            or normalized_output.get("lesson_text")
+            or normalized_output.get("description")
+        )
+        if isinstance(standalone_title, str) and standalone_title.strip() and isinstance(standalone_text, str) and standalone_text.strip():
+            raw_sub_contents = [{
+                "content_title": standalone_title.strip(),
+                "content_text": standalone_text.strip(),
+            }]
+            normalized_output["sub_contents"] = raw_sub_contents
 
     if isinstance(raw_sub_contents, list):
         normalized_sub_contents = []
-        for chunk in raw_sub_contents:
+        for index, chunk in enumerate(raw_sub_contents, start=1):
+            if isinstance(chunk, str) and chunk.strip():
+                normalized_sub_contents.append(
+                    {
+                        "content_title": f"Lesson {index}",
+                        "content_text": chunk.strip(),
+                    }
+                )
+                continue
             if not isinstance(chunk, dict):
                 normalized_sub_contents.append(chunk)
                 continue
 
             normalized_chunk = dict(chunk)
-            if "content_title" not in normalized_chunk and isinstance(normalized_chunk.get("title"), str):
-                normalized_chunk["content_title"] = normalized_chunk["title"]
+            if "content_title" not in normalized_chunk:
+                for fallback_key in ("title", "lesson_title", "section_title", "heading", "name"):
+                    fallback_value = normalized_chunk.get(fallback_key)
+                    if isinstance(fallback_value, str) and fallback_value.strip():
+                        normalized_chunk["content_title"] = fallback_value
+                        break
 
             if "content_text" not in normalized_chunk:
-                for fallback_key in ("content", "text", "body"):
+                for fallback_key in ("content", "text", "body", "explanation", "lesson_text", "description"):
                     fallback_value = normalized_chunk.get(fallback_key)
                     if isinstance(fallback_value, str) and fallback_value.strip():
                         normalized_chunk["content_text"] = fallback_value
@@ -190,6 +252,38 @@ def normalize_content_output(output, topic=None):
             normalized_sub_contents.append(normalized_chunk)
 
         normalized_output["sub_contents"] = normalized_sub_contents
+
+    return normalized_output
+
+
+def normalize_outline_output(output, payload=None):
+    if isinstance(output, list):
+        output = {"syllabus": output}
+    elif not isinstance(output, dict):
+        return output
+    else:
+        output = dict(output)
+
+    normalized_output = dict(output)
+
+    topic = normalized_output.get("topic")
+    if (not isinstance(topic, str) or not topic.strip()) and isinstance(payload, dict):
+        fallback_topic = payload.get("target_skill")
+        if isinstance(fallback_topic, str) and fallback_topic.strip():
+            normalized_output["topic"] = fallback_topic.strip()
+
+    raw_syllabus = normalized_output.get("syllabus")
+    if not isinstance(raw_syllabus, list):
+        for fallback_key in ("weeks", "outline", "weekly_syllabus", "weekly_outline"):
+            fallback_value = normalized_output.get(fallback_key)
+            if isinstance(fallback_value, list):
+                raw_syllabus = fallback_value
+                normalized_output["syllabus"] = fallback_value
+                break
+
+    goals = normalized_output.get("goals")
+    if goals is None:
+        normalized_output["goals"] = []
 
     return normalized_output
 
@@ -222,6 +316,19 @@ def validate_content_output(output):
 
         if not isinstance(content_text, str) or not content_text.strip():
             raise ValueError(f"Content chunk {index} is missing content text.")
+
+
+def validate_outline_output(output):
+    if not isinstance(output, dict):
+        raise ValueError("Outline output must be a JSON object.")
+
+    topic = output.get("topic")
+    if not isinstance(topic, str) or not topic.strip():
+        raise ValueError("Outline output is missing topic.")
+
+    syllabus = output.get("syllabus")
+    if not isinstance(syllabus, list) or not syllabus:
+        raise ValueError("Outline output must include a non-empty syllabus list.")
 
 
 def _keyword_tokens(value):
@@ -268,8 +375,11 @@ def attach_page_assessments(topic):
         if isinstance(chunk.get("page_assessment"), dict):
             continue
 
+        unused_indexes = [index for index, count in enumerate(usage_counts) if count == 0]
+        candidate_indexes = unused_indexes or list(range(len(assessments)))
+
         best_index = max(
-            range(len(assessments)),
+            candidate_indexes,
             key=lambda idx: (
                 _score_assessment_for_sub_content(assessments[idx], chunk),
                 -usage_counts[idx],
@@ -387,6 +497,8 @@ def merge_generated_sections(payload, syllabus, content):
 
 
 def build_outline_preview(payload, syllabus):
+    syllabus = normalize_outline_output(syllabus, payload=payload)
+    validate_outline_output(syllabus)
     return {
         "topic": syllabus.get("topic", payload.get("target_skill")),
         "duration_weeks": payload.get("duration_weeks"),
@@ -419,7 +531,10 @@ def generate_syllabus_outline(
         },
     )
 
-    return parse_model_response(response.text)
+    output = parse_model_response(response.text)
+    output = normalize_outline_output(output, payload=payload)
+    validate_outline_output(output)
+    return output
 
 
 def generate_content_plan(payload, syllabus, client=None, model_name="gemini-2.5-flash"):
@@ -465,8 +580,9 @@ def generate_sub_contents_for_topic(
         except (ValueError, json.JSONDecodeError) as exc:
             last_error = exc
 
-    topic_label = topic.get("topic_title", "<unknown topic>")
-    print(f"[fallback] sub_content_generator: {topic_label} ({last_error})")
+    if os.environ.get("LEARN_ANYTHING_DEBUG") == "1":
+        topic_label = topic.get("topic_title", "<unknown topic>")
+        print(f"[fallback] sub_content_generator: {topic_label} ({last_error})")
     return build_fallback_sub_content_output(topic, course_context)
 
 

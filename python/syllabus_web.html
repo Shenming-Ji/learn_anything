@@ -46,11 +46,7 @@
     }
 
     .hero {
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 24px;
-      align-items: stretch;
-      margin-bottom: 24px;
+      margin-bottom: 18px;
     }
 
     .hero-card,
@@ -63,7 +59,7 @@
     }
 
     .hero-card {
-      padding: 28px;
+      padding: 18px 22px;
       position: relative;
       overflow: hidden;
     }
@@ -71,15 +67,15 @@
     .hero-card::after {
       content: "";
       position: absolute;
-      inset: auto -60px -80px auto;
-      width: 220px;
-      height: 220px;
-      background: radial-gradient(circle, rgba(15, 118, 110, 0.25) 0%, rgba(15, 118, 110, 0) 70%);
+      inset: auto -48px -72px auto;
+      width: 170px;
+      height: 170px;
+      background: radial-gradient(circle, rgba(15, 118, 110, 0.18) 0%, rgba(15, 118, 110, 0) 72%);
       pointer-events: none;
     }
 
     .eyebrow {
-      margin: 0 0 10px;
+      margin: 0 0 6px;
       font-size: 12px;
       letter-spacing: 0.16em;
       text-transform: uppercase;
@@ -87,62 +83,20 @@
       font-weight: 700;
     }
 
-    h1 {
+    .hero-title {
       margin: 0;
       font-family: var(--serif);
-      font-size: clamp(2.4rem, 4vw, 4rem);
-      line-height: 0.95;
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      line-height: 1.02;
       font-weight: 700;
     }
 
     .hero-copy {
-      margin: 18px 0 22px;
-      max-width: 54ch;
+      margin: 8px 0 0;
+      max-width: 72ch;
       color: var(--muted);
-      font-size: 1rem;
-      line-height: 1.7;
-    }
-
-    .pill-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .pill {
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: rgba(15, 118, 110, 0.08);
-      color: var(--brand-deep);
-      font-size: 0.92rem;
-      border: 1px solid rgba(15, 118, 110, 0.12);
-    }
-
-    .hero-side {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 24px;
-    }
-
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .stat {
-      padding: 18px;
-      border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.6);
-      border: 1px solid rgba(69, 47, 26, 0.08);
-    }
-
-    .stat strong {
-      display: block;
-      font-size: 1.35rem;
-      margin-bottom: 6px;
-      color: var(--brand-deep);
+      font-size: 0.98rem;
+      line-height: 1.55;
     }
 
     .layout {
@@ -229,6 +183,92 @@
       display: grid;
       gap: 16px;
       margin-top: 18px;
+    }
+
+    .form-steps {
+      display: grid;
+      gap: 14px;
+    }
+
+    .form-stepper {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .step-count {
+      color: var(--brand-deep);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .step-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .step-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(69, 47, 26, 0.14);
+      transition: transform 160ms ease, background 160ms ease;
+    }
+
+    .step-dot.is-active {
+      background: var(--brand);
+      transform: scale(1.15);
+    }
+
+    .step-dot.is-complete {
+      background: rgba(15, 118, 110, 0.48);
+    }
+
+    .form-step {
+      display: none;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at top right, rgba(43, 183, 255, 0.08), transparent 28%),
+        rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(69, 47, 26, 0.08);
+      box-shadow: 0 10px 22px rgba(61, 43, 27, 0.05);
+    }
+
+    .form-step.is-active {
+      display: grid;
+    }
+
+    .form-step-label {
+      color: var(--brand-deep);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .form-step-title {
+      margin: -2px 0 0;
+      font-size: 1.24rem;
+      line-height: 1.18;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .form-step-copy {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
     }
 
     label {
@@ -822,16 +862,16 @@
 
     .coach-panel {
       position: fixed;
-      left: 24px;
-      bottom: 24px;
-      width: 360px;
-      max-width: calc(100vw - 48px);
-      max-height: 480px;
-      background: var(--panel);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow);
+      left: 16px;
+      bottom: 16px;
+      width: min(calc(100vw - 32px), 320px);
+      max-width: none;
+      max-height: 58vh;
+      background: rgba(255, 250, 242, 0.96);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(69, 47, 26, 0.12);
+      border-radius: 28px;
+      box-shadow: 0 18px 32px rgba(61, 43, 27, 0.14);
       display: flex;
       flex-direction: column;
       z-index: 100;
@@ -843,33 +883,41 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 14px 18px;
+      padding: 14px 16px;
       font-weight: 700;
       font-family: var(--serif);
-      font-size: 1.1rem;
-      border-bottom: 1px solid var(--border);
+      font-size: 1.18rem;
+      border-bottom: 1px solid rgba(69, 47, 26, 0.08);
       flex-shrink: 0;
       color: var(--brand-deep);
+      background: rgba(255, 250, 242, 0.98);
     }
 
     .coach-title {
       min-width: 0;
+      letter-spacing: -0.01em;
     }
 
     .coach-toggle {
       flex-shrink: 0;
-      padding: 6px 12px;
+      width: 48px;
+      height: 48px;
+      padding: 0;
       border-radius: 999px;
       background: rgba(15, 118, 110, 0.08);
       color: var(--brand-deep);
       border: 1px solid rgba(15, 118, 110, 0.14);
       box-shadow: none;
-      font-size: 0.9rem;
+      font-size: 1.7rem;
+      font-weight: 500;
       line-height: 1;
+      display: grid;
+      place-items: center;
     }
 
     .coach-panel.is-collapsed .coach-header {
       border-bottom: none;
+      background: rgba(255, 250, 242, 0.98);
     }
 
     .coach-panel.is-collapsed .coach-messages,
@@ -949,25 +997,446 @@
       white-space: nowrap;
     }
 
+    .shell {
+      width: min(100% - 16px, 430px);
+      margin: 10px auto 36px;
+    }
+
+    .hero {
+      margin-bottom: 14px;
+    }
+
+    .hero-card {
+      padding: 16px 18px;
+    }
+
+    .hero-card::after {
+      inset: auto -48px -72px auto;
+      width: 170px;
+      height: 170px;
+      background: radial-gradient(circle, rgba(15, 118, 110, 0.18) 0%, rgba(15, 118, 110, 0) 72%);
+    }
+
+    .hero-title {
+      font-size: 2rem;
+    }
+
+    .hero-copy {
+      margin: 8px 0 0;
+      max-width: none;
+      font-size: 0.96rem;
+      line-height: 1.55;
+    }
+
+    .layout {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .panel {
+      padding: 18px;
+      border-radius: 28px;
+    }
+
+    .panel h2 {
+      font-size: 1.45rem;
+      line-height: 1.1;
+    }
+
+    .panel-subtitle {
+      margin: -2px 0 14px;
+      font-size: 0.95rem;
+    }
+
+    .actions {
+      flex-direction: column;
+    }
+
+    .onboarding-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .onboarding-actions .full-row {
+      grid-column: 1 / -1;
+    }
+
+    .actions button,
+    .review-actions button {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .status {
+      font-size: 0.95rem;
+    }
+
+    .placeholder {
+      min-height: 170px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 22px 18px;
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at top center, rgba(43, 183, 255, 0.12), transparent 36%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 250, 242, 0.92));
+      border: 1px dashed rgba(69, 47, 26, 0.16);
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .study-screen {
+      display: grid;
+      gap: 14px;
+    }
+
+    .deck-hero {
+      padding: 20px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.26), transparent 26%),
+        linear-gradient(145deg, #0ea5a4 0%, #118a86 58%, #0b5d58 100%);
+      color: #f7fffd;
+      box-shadow: 0 18px 34px rgba(15, 118, 110, 0.24);
+    }
+
+    .deck-hero .card-label,
+    .deck-hero .metric-pill-label,
+    .deck-hero .metric-pill-value {
+      color: inherit;
+    }
+
+    .deck-title {
+      margin: 8px 0 8px;
+      font-size: 1.55rem;
+      line-height: 1.12;
+      font-weight: 800;
+      font-family: var(--sans);
+    }
+
+    .deck-subtitle {
+      margin: 0;
+      color: rgba(247, 255, 253, 0.88);
+      line-height: 1.55;
+    }
+
+    .metric-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .metric-pill {
+      min-width: 78px;
+      padding: 10px 12px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(10px);
+    }
+
+    .metric-pill-label {
+      display: block;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.86;
+    }
+
+    .metric-pill-value {
+      display: block;
+      margin-top: 4px;
+      font-size: 1.02rem;
+      font-weight: 800;
+    }
+
+    .study-section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .flash-lane {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 84%;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+
+    .flash-lane::-webkit-scrollbar {
+      display: none;
+    }
+
+    .flashcard {
+      scroll-snap-align: center;
+      padding: 18px;
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(69, 47, 26, 0.08);
+      box-shadow: 0 14px 28px rgba(61, 43, 27, 0.08);
+    }
+
+    .flashcard--soft {
+      background:
+        radial-gradient(circle at top right, rgba(43, 183, 255, 0.12), transparent 34%),
+        rgba(255, 255, 255, 0.94);
+    }
+
+    .flashcard-title {
+      margin: 0 0 8px;
+      font-size: 1.12rem;
+      line-height: 1.3;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .flashcard-copy {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .flashcard-list {
+      margin: 12px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .path-map {
+      display: grid;
+      gap: 12px;
+    }
+
+    .path-node {
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(69, 47, 26, 0.08);
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 10px 22px rgba(61, 43, 27, 0.06);
+    }
+
+    .path-node:hover {
+      transform: translateY(-2px);
+    }
+
+    .path-node.is-locked {
+      opacity: 0.58;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .path-node.is-locked:hover {
+      transform: none;
+    }
+
+    .path-node.is-locked .path-node-ring {
+      background: conic-gradient(rgba(69, 47, 26, 0.18) 0deg 360deg, rgba(69, 47, 26, 0.18) 0deg 360deg);
+    }
+
+    .path-node.is-locked .path-node-core {
+      color: var(--muted);
+    }
+
+    .path-node-ring {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: conic-gradient(var(--path-color) 0deg 290deg, rgba(69, 47, 26, 0.12) 290deg 360deg);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+    }
+
+    .path-node-core {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #fffefb;
+      color: var(--path-color);
+      font-weight: 800;
+      font-size: 1rem;
+      box-shadow: 0 6px 12px rgba(61, 43, 27, 0.1);
+    }
+
+    .path-node-copy {
+      min-width: 0;
+    }
+
+    .path-node-title {
+      display: block;
+      font-size: 0.98rem;
+      line-height: 1.35;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .path-node-meta {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .study-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .topic-detail-page {
+      display: grid;
+      gap: 14px;
+    }
+
+    .topic-detail-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(69, 47, 26, 0.1);
+      color: var(--ink);
+      box-shadow: 0 10px 18px rgba(61, 43, 27, 0.06);
+    }
+
+    .topic-detail-back:hover {
+      transform: translateY(-1px);
+    }
+
+    .topic-flashcard {
+      overflow: hidden;
+      padding: 0;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(69, 47, 26, 0.08);
+      box-shadow: 0 16px 30px rgba(61, 43, 27, 0.09);
+    }
+
+    .topic-flashcard-header {
+      padding: 18px;
+      color: #fffdfa;
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.3), transparent 28%),
+        linear-gradient(155deg, var(--path-color) 0%, color-mix(in srgb, var(--path-color) 68%, black 32%) 100%);
+    }
+
+    .topic-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .topic-flashcard-header .card-title {
+      margin: 12px 0 8px;
+      font-size: 1.24rem;
+      color: inherit;
+    }
+
+    .topic-flashcard-header .card-copy {
+      color: rgba(255, 253, 250, 0.88);
+    }
+
+    .topic-flashcard-body {
+      display: grid;
+      gap: 14px;
+      padding: 16px 18px 18px;
+    }
+
+    .topic-stat-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .topic-stat {
+      padding: 9px 12px;
+      border-radius: 16px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--brand-deep);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .topic-flashcard .topic-section {
+      margin: 0;
+      padding: 0;
+      border: none;
+    }
+
+    .topic-flashcard .topic-section-toggle {
+      background: rgba(250, 246, 239, 0.88);
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(69, 47, 26, 0.08);
+    }
+
+    .topic-flashcard .topic-section-toggle summary {
+      padding: 14px 16px;
+      font-weight: 800;
+    }
+
+    .topic-flashcard .topic-section-body {
+      padding: 0 14px 14px;
+    }
+
+    .coach-panel {
+      left: 16px;
+      bottom: 16px;
+      transform: none;
+      width: min(calc(100vw - 32px), 320px);
+      max-width: none;
+      max-height: 58vh;
+      border-radius: 28px;
+    }
+
     @media (max-width: 720px) {
       .shell {
-        width: min(100% - 20px, 1440px);
-        margin: 14px auto 28px;
+        width: min(100% - 14px, 430px);
+        margin: 10px auto 32px;
       }
 
       .hero-card,
-      .hero-side,
       .panel {
         padding: 18px;
       }
 
       .grid-two,
-      .stat-grid {
+      .matching-row {
         grid-template-columns: 1fr;
       }
 
-      h1 {
-        font-size: 2.4rem;
+      .hero-title {
+        font-size: 1.82rem;
+      }
+
+      .flash-lane {
+        grid-auto-columns: 92%;
       }
     }
   </style>
@@ -976,94 +1445,91 @@
   <div class="shell">
     <section class="hero">
       <div class="hero-card">
-        <p class="eyebrow">LearnAnything Interface</p>
-        <h1>Turn course ideas into structured syllabus JSON.</h1>
-        <p class="hero-copy">
-          Set the course topic, duration, level, and pace. Review the generated syllabus first, then refine or continue into full course generation.
-        </p>
-        <div class="pill-row">
-          <div class="pill">Stage-based generation progress</div>
-          <div class="pill">Outline review before full course build</div>
-          <div class="pill">Sample presets included</div>
-        </div>
-      </div>
-      <div class="hero-card hero-side">
-        <div class="stat-grid">
-          <div class="stat">
-            <strong>Input Form</strong>
-            Choose skill, duration, pace, and learning style.
-          </div>
-          <div class="stat">
-            <strong>Outline Review</strong>
-            Inspect the weekly syllabus before generating detailed content.
-          </div>
-          <div class="stat">
-            <strong>Readable Output</strong>
-            Weeks, goals, and content topics are grouped for scanning.
-          </div>
-          <div class="stat">
-            <strong>Learning Coach</strong>
-            Ask follow-up questions after the course is generated.
-          </div>
-        </div>
+        <p class="eyebrow">LearnAnything</p>
+        <h1 class="hero-title">Syllabus Studio</h1>
       </div>
     </section>
 
     <section class="layout">
-      <aside class="panel">
+      <aside class="panel" id="course-input-panel">
         <h2>Course Input</h2>
         <p class="panel-subtitle">
-          Start from a sample or describe a new learning request. The form will be converted into the same JSON schema used by the existing generator.
+          Describe a learning request and generate an outline first, then turn it into a mobile study path.
         </p>
 
-        <div class="sample-row">
-          <button class="secondary-button" type="button" data-sample="space">Load Space Sample</button>
-          <button class="secondary-button" type="button" data-sample="ds_health">Load Data Health Sample</button>
-        </div>
-
         <form id="syllabus-form">
-          <label>
-            Target Skill
-            <input id="target-skill" name="target_skill" type="text" placeholder="Example: Laser and optical systems in space" required>
-            <span class="hint">What should the learner be able to study or master?</span>
-          </label>
+          <div class="form-steps">
+            <div class="form-stepper">
+              <div class="step-meta">
+                <span class="step-count" id="step-count">Step 1 of 3</span>
+                <div class="step-dots" aria-hidden="true">
+                  <span class="step-dot is-active" data-step-dot="0"></span>
+                  <span class="step-dot" data-step-dot="1"></span>
+                  <span class="step-dot" data-step-dot="2"></span>
+                </div>
+              </div>
+            </div>
 
-          <div class="grid-two">
-            <label>
-              Duration Weeks
-              <input id="duration-weeks" name="duration_weeks" type="number" min="1" step="1" required>
-            </label>
+            <section class="form-step is-active" data-form-step="0">
+              <span class="form-step-label">Step 1</span>
+              <h3 class="form-step-title">What do you want to learn?</h3>
+              <p class="form-step-copy">Start with the target skill or topic you want the learner to master.</p>
+              <label>
+                Target Skill
+                <input id="target-skill" name="target_skill" type="text" placeholder="Example: Laser and optical systems in space" required>
+                <span class="hint">What should the learner be able to study or master?</span>
+              </label>
+            </section>
 
-            <label>
-              Hours Per Week
-              <input id="hours-per-week" name="hours_per_week" type="number" min="1" step="1" required>
-            </label>
-          </div>
+            <section class="form-step" data-form-step="1">
+              <span class="form-step-label">Step 2</span>
+              <h3 class="form-step-title">How much time should it take?</h3>
+              <p class="form-step-copy">Set the overall duration and the weekly study pace.</p>
+              <div class="grid-two">
+                <label>
+                  Duration Weeks
+                  <input id="duration-weeks" name="duration_weeks" type="number" min="1" step="1" required>
+                </label>
 
-          <div class="grid-two">
-            <label>
-              Difficulty Level
-              <select id="difficulty-level" name="difficulty_level">
-                <option value="1">1 · Introductory</option>
-                <option value="2">2 · Beginner</option>
-                <option value="3">3 · Intermediate</option>
-                <option value="4">4 · Advanced</option>
-                <option value="5">5 · Expert</option>
-              </select>
-            </label>
+                <label>
+                  Hours Per Week
+                  <input id="hours-per-week" name="hours_per_week" type="number" min="1" step="1" required>
+                </label>
+              </div>
+            </section>
 
-            <label>
-              Learning Style
-              <select id="learning-style" name="learning_style">
-                <option value="practical">Practical</option>
-                <option value="theoretical">Theoretical</option>
-              </select>
-            </label>
-          </div>
+            <section class="form-step" data-form-step="2">
+              <span class="form-step-label">Step 3</span>
+              <h3 class="form-step-title">Choose the level and learning style</h3>
+              <p class="form-step-copy">This shapes the depth, pacing, and type of examples in the course.</p>
+              <div class="grid-two">
+                <label>
+                  Difficulty Level
+                  <select id="difficulty-level" name="difficulty_level">
+                    <option value="1">1 · Introductory</option>
+                    <option value="2">2 · Beginner</option>
+                    <option value="3">3 · Intermediate</option>
+                    <option value="4">4 · Advanced</option>
+                    <option value="5">5 · Expert</option>
+                  </select>
+                </label>
 
-          <div class="actions">
-            <button class="primary-button" id="generate-button" type="submit">Generate Outline</button>
-            <button class="secondary-button" id="clear-button" type="button">Clear Form</button>
+                <label>
+                  Learning Style
+                  <select id="learning-style" name="learning_style">
+                    <option value="practical">Practical</option>
+                    <option value="theoretical">Theoretical</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <div class="onboarding-actions">
+              <button class="secondary-button" id="prev-step-button" type="button" disabled>Back</button>
+              <button class="primary-button" id="next-step-button" type="button">Next</button>
+              <button class="primary-button full-row" id="generate-button" type="submit" hidden>Generate Outline</button>
+              <button class="secondary-button full-row" id="clear-button" type="button">Start Over</button>
+            </div>
           </div>
         </form>
 
@@ -1087,13 +1553,13 @@
       </aside>
 
       <main class="output-stack">
-        <section class="panel">
+        <section class="panel" id="output-panel">
           <div class="section-header">
-            <h2>Readable Output</h2>
+            <h2>Study Deck</h2>
             <span class="card-label" id="result-badge">Waiting for input</span>
           </div>
           <div id="readable-output" class="placeholder">
-            Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.
+            Generate an outline first. The final course will appear here as a mobile learning path with flashcard-style study cards.
           </div>
           <div id="review-actions" class="review-actions">
             <p class="review-note">Review the outline first. If it looks right, continue to generate topics, detailed content, assessments, and images.</p>
@@ -1161,6 +1627,9 @@
     const resultBadge = document.getElementById("result-badge");
     const generateButton = document.getElementById("generate-button");
     const clearButton = document.getElementById("clear-button");
+    const nextStepButton = document.getElementById("next-step-button");
+    const prevStepButton = document.getElementById("prev-step-button");
+    const stepCount = document.getElementById("step-count");
     const reviewActions = document.getElementById("review-actions");
     const approveOutlineButton = document.getElementById("approve-outline-button");
     const regenerateOutlineButton = document.getElementById("regenerate-outline-button");
@@ -1170,10 +1639,15 @@
     const coachInput = document.getElementById("coach-input");
     const coachSend = document.getElementById("coach-send");
     const coachToggle = document.getElementById("coach-toggle");
+    const formSteps = Array.from(document.querySelectorAll("[data-form-step]"));
+    const stepDots = Array.from(document.querySelectorAll("[data-step-dot]"));
     const TASK_POLL_INTERVAL_MS = 700;
+    const LAST_FORM_STEP_INDEX = Math.max(0, formSteps.length - 1);
     let currentCourse = null;
     let currentPayload = null;
     let currentOutline = null;
+    let currentFormStep = 0;
+    let currentTopicIndex = null;
 
     const fields = {
       target_skill: document.getElementById("target-skill"),
@@ -1588,8 +2062,6 @@
         return "<p class=\"card-copy\">No lessons generated for this topic.</p>";
       }
 
-      const firstLessonComplete = !subContents[0].page_assessment;
-
       return `
         <div class="lesson-pager" id="${escapeHtml(pagerId)}" data-page-index="0">
           <div class="lesson-pager-header">
@@ -1608,7 +2080,7 @@
                 type="button"
                 data-lesson-next
                 onclick="changeLessonPage('${escapeHtml(pagerId)}', 1)"
-                ${subContents.length > 1 && firstLessonComplete ? "" : "disabled"}
+                ${subContents.length > 1 ? "" : "disabled"}
               >Next</button>
             </div>
           </div>
@@ -1619,7 +2091,7 @@
             <article
               class="mini-card lesson-page ${index === 0 ? "is-active" : ""}"
               data-lesson-page="${index}"
-              data-page-completed="${item.page_assessment ? "false" : "true"}"
+              data-page-completed="${isLessonCompleted(item) ? "true" : "false"}"
             >
               <span class="card-label">Lesson ${escapeHtml(buildLessonLabel(topicTitle, index))}</span>
               <h5 class="card-title">${escapeHtml(lessonTitle)}</h5>
@@ -1627,7 +2099,7 @@
               <div class="lesson-quiz">
                 <div class="section-header">
                   <h3>Quiz</h3>
-                  <span class="card-label">${item.page_assessment ? "Complete the quiz to continue" : "No quiz required"}</span>
+                  <span class="card-label">${item.page_assessment ? "Optional practice" : "No quiz included"}</span>
                 </div>
                 ${renderAssessments(
                   item.page_assessment ? [item.page_assessment] : [],
@@ -1673,10 +2145,10 @@
 
       const nextButton = pager.querySelector("[data-lesson-next]");
       if (nextButton) {
-        const currentLesson = pages[safeIndex];
-        const currentLessonCompleted = currentLesson && currentLesson.dataset.pageCompleted === "true";
-        nextButton.disabled = safeIndex === pages.length - 1 || !currentLessonCompleted;
+        nextButton.disabled = safeIndex === pages.length - 1;
       }
+
+      markLessonCompleted(pagerId, safeIndex);
     }
 
     function changeLessonPage(pagerId, delta) {
@@ -1684,9 +2156,8 @@
       if (!pager) return;
       const currentIndex = Number(pager.dataset.pageIndex || "0");
       const pages = Array.from(pager.querySelectorAll("[data-lesson-page]"));
-      const currentLesson = pages[currentIndex];
-      if (delta > 0 && currentLesson && currentLesson.dataset.pageCompleted !== "true") {
-        return;
+      if (delta > 0) {
+        markLessonCompleted(pagerId, currentIndex);
       }
       setLessonPage(pagerId, currentIndex + delta);
     }
@@ -1720,195 +2191,335 @@
       `;
     }
 
+    const PATH_COLORS = ["#2bb7ff", "#8ccf22", "#ffb703", "#fb7185", "#8b5cf6", "#14b8a6"];
+
+    function getPathColor(index) {
+      return PATH_COLORS[index % PATH_COLORS.length];
+    }
+
+    function renderMetricPills(metrics) {
+      return `
+        <div class="metric-row">
+          ${metrics.map((metric) => `
+            <div class="metric-pill">
+              <span class="metric-pill-label">${escapeHtml(metric.label)}</span>
+              <span class="metric-pill-value">${escapeHtml(metric.value)}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderGoalFlashcards(goals) {
+      if (!goals || goals.length === 0) {
+        return "<p class=\"card-copy\">No goals generated yet.</p>";
+      }
+
+      return `
+        <div class="flash-lane">
+          ${goals.map((goal, index) => `
+            <article class="flashcard flashcard--soft">
+              <span class="card-label">Goal ${index + 1}</span>
+              <h4 class="flashcard-title">${escapeHtml(goal)}</h4>
+              <p class="flashcard-copy">A key outcome this course should help the learner reach.</p>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderWeekFlashcards(weeks) {
+      if (!weeks || weeks.length === 0) {
+        return "<p class=\"card-copy\">No weekly structure generated yet.</p>";
+      }
+
+      return `
+        <div class="flash-lane">
+          ${weeks.map((week) => `
+            <article class="flashcard">
+              <span class="card-label">Week ${escapeHtml(week.week || "?")}</span>
+              <h4 class="flashcard-title">${escapeHtml(week.topic || "Untitled week")}</h4>
+              <ul class="flashcard-list">
+                ${(week.learning_objectives || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+              </ul>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function isLessonCompleted(subContent) {
+      if (!subContent || typeof subContent !== "object") return false;
+      return subContent.completed === true;
+    }
+
+    function isTopicCompleted(topics, topicIndex) {
+      const topic = Array.isArray(topics) ? topics[topicIndex] : null;
+      if (!topic) return false;
+      const lessons = Array.isArray(topic.sub_contents) ? topic.sub_contents : [];
+      if (lessons.length === 0) return false;
+      return lessons.every((lesson) => isLessonCompleted(lesson));
+    }
+
+    function isTopicUnlocked(topics, topicIndex) {
+      if (topicIndex <= 0) return true;
+      for (let index = 0; index < topicIndex; index += 1) {
+        if (!isTopicCompleted(topics, index)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function markLessonCompleted(pagerId, pageIndex) {
+      if (!currentCourse || !currentCourse.content || !Array.isArray(currentCourse.content.topics)) return;
+      const match = String(pagerId || "").match(/lesson-pager-(\d+)/);
+      if (!match) return;
+      const topicIndex = Number(match[1]);
+      const topic = currentCourse.content.topics[topicIndex];
+      if (!topic || !Array.isArray(topic.sub_contents)) return;
+      const lesson = topic.sub_contents[pageIndex];
+      if (lesson) {
+        lesson.completed = true;
+      }
+      const pager = document.getElementById(pagerId);
+      const page = pager ? pager.querySelector(`[data-lesson-page="${pageIndex}"]`) : null;
+      if (page) {
+        page.dataset.pageCompleted = "true";
+      }
+    }
+
+    function renderTopicPath(topics) {
+      if (!topics || topics.length === 0) {
+        return "<p class=\"card-copy\">No topic path available yet.</p>";
+      }
+
+      return `
+        <div class="path-map">
+          ${topics.map((topic, index) => {
+            const lessons = (topic.sub_contents || []).length;
+            const quizzes = countLessonQuizzes(topic.sub_contents || []);
+            const color = getPathColor(index);
+            const unlocked = isTopicUnlocked(topics, index);
+            return `
+              <a class="path-node ${unlocked ? "" : "is-locked"}" href="#" onclick="return openTopicPage(${index})" style="--path-color: ${color}">
+                <span class="path-node-ring">
+                  <span class="path-node-core">${index + 1}</span>
+                </span>
+                <span class="path-node-copy">
+                  <span class="path-node-title">${escapeHtml(stripTopicIndex(topic.topic_title || `Topic ${index + 1}`))}</span>
+                  <span class="path-node-meta">${unlocked
+                    ? `${escapeHtml(lessons)} lessons · ${escapeHtml(quizzes)} quizzes · ${escapeHtml(topic.estimated_hours || 0)}h`
+                    : "Locked until the previous path is completed"}</span>
+                </span>
+              </a>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function renderTopicStudyCard(topic, topicIndex) {
+      if (!topic) {
+        return "<p class=\"card-copy\">No topic card generated yet.</p>";
+      }
+
+      const lessons = topic.sub_contents || [];
+      const quizzes = countLessonQuizzes(lessons);
+      const color = getPathColor(topicIndex);
+      return `
+        <article class="topic-flashcard" id="topic-card-${topicIndex}" style="--path-color: ${color}">
+          <div class="topic-flashcard-header">
+            <span class="topic-kicker">Topic ${topicIndex + 1}</span>
+            <h4 class="card-title">${escapeHtml(topic.topic_title || "Untitled topic")}</h4>
+            <p class="card-copy">${escapeHtml(topic.topic_description || "")}</p>
+          </div>
+          <div class="topic-flashcard-body">
+            <div class="topic-stat-row">
+              <span class="topic-stat">${escapeHtml(topic.estimated_hours || 0)} hours</span>
+              <span class="topic-stat">${escapeHtml(lessons.length)} lessons</span>
+              <span class="topic-stat">${escapeHtml(quizzes)} quizzes</span>
+              <span class="topic-stat">${escapeHtml((topic.images || []).length)} images</span>
+            </div>
+            <section class="topic-section">
+              <details class="topic-section-toggle" open>
+                <summary>Lesson Details · ${escapeHtml(lessons.length)} items</summary>
+                <div class="topic-section-body">
+                  ${renderLessons(lessons, `lesson-pager-${topicIndex}`, topic.topic_title || "")}
+                </div>
+              </details>
+            </section>
+            ${renderImages(topic.images || [])}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderTopicDetailPage(output, topic, topicIndex, totalTopics) {
+      const lessons = (topic.sub_contents || []).length;
+      const quizzes = countLessonQuizzes(topic.sub_contents || []);
+      return `
+        <section class="topic-detail-page">
+          <button class="topic-detail-back secondary-button" type="button" onclick="closeTopicPage()">Back to Path</button>
+          <section class="deck-hero">
+            <span class="card-label">Topic ${topicIndex + 1} of ${totalTopics}</span>
+            <h3 class="deck-title">${escapeHtml(topic.topic_title || "Untitled topic")}</h3>
+            <p class="deck-subtitle">${escapeHtml(topic.topic_description || "")}</p>
+            ${renderMetricPills([
+              { label: "Lessons", value: `${lessons}` },
+              { label: "Quizzes", value: `${quizzes}` },
+              { label: "Hours", value: `${topic.estimated_hours || 0}` },
+              { label: "Images", value: `${(topic.images || []).length}` },
+            ])}
+          </section>
+          ${renderTopicStudyCard(topic, topicIndex)}
+        </section>
+      `;
+    }
+
     function renderOutlineOutput(output) {
       const goals = output.goals || [];
       const weeks = output.syllabus || [];
-      const preferences = output.personal_parameters || [];
-
-      const summaryCards = `
-        <div class="summary-grid">
-          <div class="summary-card">
-            <span>Course Topic</span>
-            <strong>${escapeHtml(output.topic || "Untitled")}</strong>
-          </div>
-          <div class="summary-card">
-            <span>Duration</span>
-            <strong>${escapeHtml(output.duration_weeks || 0)} weeks</strong>
-          </div>
-          <div class="summary-card">
-            <span>Difficulty</span>
-            <strong>${escapeHtml(output.difficulty_level || "-")}</strong>
-          </div>
-          <div class="summary-card">
-            <span>Weekly Plan</span>
-            <strong>${escapeHtml(weeks.length)}</strong>
-          </div>
-        </div>
-      `;
-
-      const pedagogySection = `
-        <section>
-          <div class="section-header">
-            <h3>Teaching Approach</h3>
-            <span class="card-label">Outline preview</span>
-          </div>
-          <div class="summary-card">
-            <p class="card-copy">${escapeHtml(output.pedagogical_style || "No pedagogical style generated yet.")}</p>
-          </div>
-        </section>
-      `;
-
-      const preferencesSection = `
-        <section>
-          <div class="section-header">
-            <h3>Learner Preferences</h3>
-            <span class="card-label">${preferences.length} items</span>
-          </div>
-          <div class="summary-card">${renderList(preferences)}</div>
+      const summaryHero = `
+        <section class="deck-hero">
+          <span class="card-label">Outline Ready</span>
+          <h3 class="deck-title">${escapeHtml(output.topic || "Untitled course")}</h3>
+          <p class="deck-subtitle">${escapeHtml(output.pedagogical_style || "Review the structure first, then continue into a full lesson path.")}</p>
+          ${renderMetricPills([
+            { label: "Weeks", value: `${output.duration_weeks || 0}` },
+            { label: "Level", value: `${output.difficulty_level || "-"}` },
+            { label: "Goals", value: `${goals.length}` },
+            { label: "Plan", value: `${weeks.length}` },
+          ])}
         </section>
       `;
 
       const goalsSection = `
-        <section>
+        <section class="study-section">
           <div class="section-header">
             <h3>Goals</h3>
-            <span class="card-label">${goals.length} items</span>
+            <span class="card-label">${goals.length} targets</span>
           </div>
-          <div class="summary-card">${renderList(goals)}</div>
+          ${renderGoalFlashcards(goals)}
         </section>
       `;
 
       const weeksSection = `
-        <section>
+        <section class="study-section">
           <div class="section-header">
-            <h3>Weekly Syllabus</h3>
+            <h3>Weekly Cards</h3>
             <span class="card-label">${weeks.length} weeks</span>
           </div>
-          <div class="list-stack">
-            ${weeks.map((week) => `
-              <article class="week-card">
-                <span class="card-label">Week ${escapeHtml(week.week || "?")}</span>
-                <h4 class="card-title">${escapeHtml(week.topic || "Untitled week")}</h4>
-                <p class="card-copy"><strong>Learning objectives</strong></p>
-                ${renderList(week.learning_objectives || [])}
-              </article>
-            `).join("")}
-          </div>
+          ${renderWeekFlashcards(weeks)}
         </section>
       `;
 
-      readableOutput.className = "output-stack";
-      readableOutput.innerHTML = summaryCards + pedagogySection + (preferences.length ? preferencesSection : "") + goalsSection + weeksSection;
+      readableOutput.className = "study-screen";
+      readableOutput.innerHTML = summaryHero + goalsSection + weeksSection;
       typesetMath(readableOutput);
     }
 
-    function renderReadableOutput(output) {
+    function renderReadableOutput(output, topicIndex = null) {
       const goals = output.goals || [];
       const weeks = output.syllabus || [];
       const contentTopics = (output.content && output.content.topics) || [];
+      const totalLessons = contentTopics.reduce((sum, topic) => sum + ((topic.sub_contents || []).length), 0);
+      const totalQuizzes = contentTopics.reduce((sum, topic) => sum + countLessonQuizzes(topic.sub_contents || []), 0);
+      const totalImages = contentTopics.reduce((sum, topic) => sum + ((topic.images || []).length), 0);
 
-      const summaryCards = `
-        <div class="summary-grid">
-          <div class="summary-card">
-            <span>Course Topic</span>
-            <strong>${escapeHtml(output.topic || "Untitled")}</strong>
-          </div>
-          <div class="summary-card">
-            <span>Duration</span>
-            <strong>${escapeHtml(output.duration_weeks || 0)} weeks</strong>
-          </div>
-          <div class="summary-card">
-            <span>Difficulty</span>
-            <strong>${escapeHtml(output.difficulty_level || "-")}</strong>
-          </div>
-          <div class="summary-card">
-            <span>Content Topics</span>
-            <strong>${escapeHtml(contentTopics.length)}</strong>
-          </div>
-        </div>
+      if (typeof topicIndex === "number" && topicIndex >= 0 && topicIndex < contentTopics.length) {
+        readableOutput.className = "study-screen";
+        readableOutput.innerHTML = renderTopicDetailPage(output, contentTopics[topicIndex], topicIndex, contentTopics.length);
+        typesetMath(readableOutput);
+        const pager = readableOutput.querySelector(".lesson-pager");
+        if (pager && pager.id) {
+          setLessonPage(pager.id, Number(pager.dataset.pageIndex || "0"));
+        }
+        return;
+      }
+
+      const summaryHero = `
+        <section class="deck-hero">
+          <span class="card-label">Course Generated</span>
+          <h3 class="deck-title">${escapeHtml(output.topic || "Untitled course")}</h3>
+          <p class="deck-subtitle">A Duolingo-style study path with bite-sized lessons, quizzes, and visual references you can move through on mobile.</p>
+          ${renderMetricPills([
+            { label: "Weeks", value: `${output.duration_weeks || 0}` },
+            { label: "Topics", value: `${contentTopics.length}` },
+            { label: "Lessons", value: `${totalLessons}` },
+            { label: "Quizzes", value: `${totalQuizzes}` },
+            { label: "Images", value: `${totalImages}` },
+          ])}
+        </section>
       `;
 
       const goalsSection = `
-        <section>
+        <section class="study-section">
           <div class="section-header">
-            <h3>Goals</h3>
-            <span class="card-label">${goals.length} items</span>
+            <h3>Mission Cards</h3>
+            <span class="card-label">${goals.length} goals</span>
           </div>
-          <div class="summary-card">${renderList(goals)}</div>
+          ${renderGoalFlashcards(goals)}
         </section>
       `;
 
       const weeksSection = `
-        <section>
+        <section class="study-section">
           <div class="section-header">
-            <h3>Weekly Syllabus</h3>
-            <span class="card-label">${weeks.length} weeks</span>
+            <h3>Week Deck</h3>
+            <span class="card-label">${weeks.length} cards</span>
           </div>
-          <div class="list-stack">
-            ${weeks.map((week) => `
-              <article class="week-card">
-                <span class="card-label">Week ${escapeHtml(week.week || "?")}</span>
-                <h4 class="card-title">${escapeHtml(week.topic || "Untitled week")}</h4>
-                <p class="card-copy"><strong>Learning objectives</strong></p>
-                ${renderList(week.learning_objectives || [])}
-              </article>
-            `).join("")}
+          ${renderWeekFlashcards(weeks)}
+        </section>
+      `;
+
+      const pathSection = `
+        <section class="study-section">
+          <div class="section-header">
+            <h3>Learning Path</h3>
+            <span class="card-label">${contentTopics.length} topics</span>
+          </div>
+          ${renderTopicPath(contentTopics)}
+        </section>
+      `;
+
+      const topicSection = `
+        <section class="study-section">
+          <div class="section-header">
+            <h3>Study Cards</h3>
+            <span class="card-label">Select a path to open one topic page</span>
+          </div>
+          <div class="summary-card">
+            <p class="card-copy">Tap a path above to open its dedicated study page. Only one topic is shown at a time.</p>
           </div>
         </section>
       `;
 
-      const contentSection = `
-        <section>
-          <div class="section-header">
-            <h3>Content Topics</h3>
-            <span class="card-label">${contentTopics.length} topic plans</span>
-          </div>
-          <div class="list-stack">
-            ${contentTopics.map((topic, topicIndex) => `
-              <article class="topic-card">
-                <span class="card-label">${escapeHtml(topic.estimated_hours || 0)} hours estimated</span>
-                <h4 class="card-title">${escapeHtml(topic.topic_title || "Untitled topic")}</h4>
-                <p class="card-copy">${escapeHtml(topic.topic_description || "")}</p>
-                <div class="topic-meta">
-                  <div class="mini-card">
-                    <span class="card-label">Quizzes</span>
-                    <strong>${escapeHtml(countLessonQuizzes(topic.sub_contents || []))}</strong>
-                  </div>
-                  <div class="mini-card">
-                    <span class="card-label">Lessons</span>
-                    <strong>${escapeHtml((topic.sub_contents || []).length)}</strong>
-                  </div>
-                  <div class="mini-card">
-                    <span class="card-label">Images</span>
-                    <strong>${escapeHtml((topic.images || []).length)}</strong>
-                  </div>
-                </div>
-                <section class="topic-section">
-                  <details class="topic-section-toggle">
-                    <summary>Assessment Details · ${escapeHtml((topic.assessments || []).length)} items</summary>
-                    <div class="topic-section-body">
-                      ${renderAssessments(topic.assessments || [])}
-                    </div>
-                  </details>
-                </section>
-                <section class="topic-section">
-                  <details class="topic-section-toggle">
-                    <summary>Lesson Details · ${escapeHtml((topic.sub_contents || []).length)} items</summary>
-                    <div class="topic-section-body">
-                      ${renderLessons(topic.sub_contents || [], `lesson-pager-${topicIndex}`, topic.topic_title || "")}
-                    </div>
-                  </details>
-                </section>
-                ${renderImages(topic.images || [])}
-              </article>
-            `).join("")}
-          </div>
-        </section>
-      `;
-
-      readableOutput.className = "output-stack";
-      readableOutput.innerHTML = summaryCards + goalsSection + weeksSection + contentSection;
+      readableOutput.className = "study-screen";
+      readableOutput.innerHTML = summaryHero + goalsSection + weeksSection + pathSection + topicSection;
       typesetMath(readableOutput);
+    }
+
+    function openTopicPage(topicIndex) {
+      if (!currentCourse) return false;
+      const topics = (currentCourse.content && currentCourse.content.topics) || [];
+      if (!isTopicUnlocked(topics, topicIndex)) {
+        setStatus("Finish the previous learning path to unlock this topic.");
+        return false;
+      }
+      currentTopicIndex = topicIndex;
+      renderReadableOutput(currentCourse, topicIndex);
+      resultBadge.textContent = `Topic ${topicIndex + 1}`;
+      document.getElementById("output-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return false;
+    }
+
+    function closeTopicPage() {
+      if (!currentCourse) return;
+      currentTopicIndex = null;
+      renderReadableOutput(currentCourse);
+      resultBadge.textContent = "Generated";
+      document.getElementById("output-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     function setReviewActionsVisible(visible) {
@@ -1920,6 +2531,7 @@
       currentCourse = null;
       currentPayload = null;
       currentOutline = null;
+      currentTopicIndex = null;
       setReviewActionsVisible(false);
       coachPanel.style.display = "none";
       resultBadge.textContent = "Draft changed";
@@ -1935,27 +2547,40 @@
       fields.hours_per_week.value = payload.hours_per_week || "";
     }
 
-    async function loadSample(sampleName) {
-      setStatus(`Loading sample: ${sampleName}...`);
-      const response = await fetch(`/api/sample?name=${encodeURIComponent(sampleName)}`);
-      const data = await response.json();
+    function setFormStep(stepIndex, options = {}) {
+      const safeIndex = Math.max(0, Math.min(stepIndex, LAST_FORM_STEP_INDEX));
+      currentFormStep = safeIndex;
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load sample.");
+      formSteps.forEach((step, index) => {
+        step.classList.toggle("is-active", index === safeIndex);
+      });
+
+      stepDots.forEach((dot, index) => {
+        dot.classList.toggle("is-active", index === safeIndex);
+        dot.classList.toggle("is-complete", index < safeIndex);
+      });
+
+      stepCount.textContent = `Step ${safeIndex + 1} of ${formSteps.length}`;
+      prevStepButton.disabled = safeIndex === 0;
+      nextStepButton.hidden = safeIndex === LAST_FORM_STEP_INDEX;
+      generateButton.hidden = safeIndex !== LAST_FORM_STEP_INDEX;
+
+      if (options.focus) {
+        const firstField = formSteps[safeIndex].querySelector("input, select, textarea");
+        if (firstField) firstField.focus();
       }
+    }
 
-      fillForm(data.payload);
-      currentCourse = null;
-      currentPayload = null;
-      currentOutline = null;
-      readableOutput.className = "placeholder";
-      readableOutput.textContent = "Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.";
-      setReviewActionsVisible(false);
-      coachPanel.style.display = "none";
-      setStatus(`Loaded sample: ${sampleName}.`);
-      resetProgress();
-      resultBadge.textContent = "Sample loaded";
-      outlineFeedback.value = "";
+    function validateStep(stepIndex) {
+      const step = formSteps[stepIndex];
+      if (!step) return true;
+      const controls = Array.from(step.querySelectorAll("input, select, textarea"));
+      for (const control of controls) {
+        if (!control.reportValidity()) {
+          return false;
+        }
+      }
+      return true;
     }
 
     async function generateOutline(options = {}) {
@@ -1966,6 +2591,9 @@
       setProgress(10, "active");
       resultBadge.textContent = "Generating outline";
       generateButton.disabled = true;
+      nextStepButton.disabled = true;
+      prevStepButton.disabled = true;
+      clearButton.disabled = true;
       generateButton.setAttribute("aria-busy", "true");
       generateButton.textContent = "Generating Outline...";
       approveOutlineButton.disabled = true;
@@ -1990,6 +2618,7 @@
 
         currentPayload = result.payload;
         currentOutline = result.syllabus;
+        currentTopicIndex = null;
         renderOutlineOutput(result.output);
         setStatus("Outline ready. Review it, then continue or re-generate.");
         resultBadge.textContent = "Review outline";
@@ -2002,6 +2631,9 @@
         resultBadge.textContent = "Error";
       } finally {
         generateButton.disabled = false;
+        prevStepButton.disabled = currentFormStep === 0;
+        nextStepButton.disabled = false;
+        clearButton.disabled = false;
         generateButton.setAttribute("aria-busy", "false");
         generateButton.textContent = "Generate Outline";
       }
@@ -2026,6 +2658,7 @@
         });
         const result = await waitForTask(taskId);
 
+        currentTopicIndex = null;
         renderReadableOutput(result.output);
         setStatus("Full course generation complete.");
         resultBadge.textContent = "Generated";
@@ -2050,9 +2683,11 @@
       form.reset();
       fields.difficulty_level.value = "2";
       fields.learning_style.value = "practical";
+      setFormStep(0);
       currentCourse = null;
       currentPayload = null;
       currentOutline = null;
+      currentTopicIndex = null;
       outlineFeedback.value = "";
       approveOutlineButton.disabled = true;
       regenerateOutlineButton.disabled = true;
@@ -2067,9 +2702,22 @@
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      if (currentFormStep !== LAST_FORM_STEP_INDEX) {
+        if (validateStep(currentFormStep)) {
+          setFormStep(currentFormStep + 1, { focus: true });
+        }
+        return;
+      }
       generateOutline({ regenerate: false });
     });
     clearButton.addEventListener("click", clearForm);
+    nextStepButton.addEventListener("click", () => {
+      if (!validateStep(currentFormStep)) return;
+      setFormStep(currentFormStep + 1, { focus: true });
+    });
+    prevStepButton.addEventListener("click", () => {
+      setFormStep(currentFormStep - 1, { focus: true });
+    });
     approveOutlineButton.addEventListener("click", generateCourseDetails);
     regenerateOutlineButton.addEventListener("click", () => {
       generateOutline({ regenerate: true });
@@ -2081,16 +2729,6 @@
       });
       input.addEventListener("change", () => {
         invalidateGeneratedState();
-      });
-    }
-
-    for (const button of document.querySelectorAll("[data-sample]")) {
-      button.addEventListener("click", async () => {
-        try {
-          await loadSample(button.dataset.sample);
-        } catch (error) {
-          setStatus(error.message, true);
-        }
       });
     }
 
@@ -2120,6 +2758,7 @@
           if (page) {
             page.dataset.pageCompleted = "true";
           }
+          markLessonCompleted(pagerId, pageIndex);
           if (pagerId) {
             setLessonPage(pagerId, pageIndex);
           }
@@ -2135,7 +2774,7 @@
         });
         el.classList.add("mc-wrong");
         if (resultEl) {
-          resultEl.textContent = "❌ Not quite. Try again to unlock the next lesson.";
+          resultEl.textContent = "❌ Not quite. You can retry, or continue whenever you're ready.";
           resultEl.className = "mc-result mc-result-wrong";
         }
         return;
@@ -2166,7 +2805,7 @@
       const allSelected = selects.every((select) => select.value);
       if (!allSelected) {
         if (resultEl) {
-          resultEl.textContent = "Complete every match before checking.";
+          resultEl.textContent = "Select every match to check your answer, or just continue to the next lesson.";
           resultEl.className = "mc-result mc-result-wrong";
         }
         return;
@@ -2187,6 +2826,7 @@
           if (page) {
             page.dataset.pageCompleted = "true";
           }
+          markLessonCompleted(pagerId, pageIndex);
           if (pagerId) {
             setLessonPage(pagerId, pageIndex);
           }
@@ -2203,7 +2843,7 @@
 
       if (resultEl) {
         resultEl.textContent = isGated
-          ? "❌ Some matches are off. Try again to unlock the next lesson."
+          ? "❌ Some matches are off. You can retry, or continue whenever you're ready."
           : "❌ Some matches are off. Try again.";
         resultEl.className = "mc-result mc-result-wrong";
       }

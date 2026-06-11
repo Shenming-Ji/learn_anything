@@ -113,7 +113,7 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(chunk["content_title"], "Optical Basics")
         self.assertEqual(chunk["content_text"], "A short explanation.")
 
-    def test_normalize_content_output_does_not_convert_single_top_level_content_into_lesson_list(self):
+    def test_normalize_content_output_wraps_single_top_level_content_into_lesson_list(self):
         output = syllabus_service.normalize_content_output(
             {
                 "topic_title": "1.1 Fundamentals of Optics",
@@ -122,7 +122,56 @@ class SyllabusGeneratorTests(unittest.TestCase):
             }
         )
 
-        self.assertNotIn("sub_contents", output)
+        self.assertEqual(output["sub_contents"][0]["content_title"], "Optical Basics")
+        self.assertEqual(output["sub_contents"][0]["content_text"], "A short explanation.")
+
+    def test_normalize_content_output_wraps_top_level_list(self):
+        output = syllabus_service.normalize_content_output(
+            [
+                {
+                    "title": "Optical Basics",
+                    "text": "A short explanation.",
+                }
+            ]
+        )
+
+        self.assertEqual(output["sub_contents"][0]["content_title"], "Optical Basics")
+        self.assertEqual(output["sub_contents"][0]["content_text"], "A short explanation.")
+
+    def test_normalize_content_output_accepts_pages_alias(self):
+        output = syllabus_service.normalize_content_output(
+            {
+                "topic_title": "1.1 Fundamentals of Optics",
+                "pages": [
+                    {
+                        "lesson_title": "Optical Basics",
+                        "description": "A short explanation.",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(output["sub_contents"][0]["content_title"], "Optical Basics")
+        self.assertEqual(output["sub_contents"][0]["content_text"], "A short explanation.")
+
+    def test_normalize_outline_output_wraps_top_level_list(self):
+        payload = {"target_skill": "Intro to robotics"}
+
+        output = syllabus_service.normalize_outline_output(
+            [
+                {
+                    "week": 1,
+                    "topic": "Foundations",
+                    "learning_objectives": [],
+                    "assessments": [],
+                }
+            ],
+            payload=payload,
+        )
+
+        self.assertEqual(output["topic"], "Intro to robotics")
+        self.assertEqual(len(output["syllabus"]), 1)
+        self.assertEqual(output["goals"], [])
 
     def test_load_system_prompt_reads_prompt_file(self):
         prompt = syllabus_service.load_system_prompt()
@@ -352,6 +401,24 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(preview["pedagogical_style"], "Hands-on and structured.")
         self.assertNotIn("content", preview)
 
+    def test_build_outline_preview_accepts_list_outline(self):
+        payload = {
+            "target_skill": "Intro to robotics",
+            "duration_weeks": 6,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": [],
+        }
+
+        preview = syllabus_service.build_outline_preview(
+            payload,
+            [{"week": 1, "topic": "Foundations", "learning_objectives": [], "assessments": []}],
+        )
+
+        self.assertEqual(preview["topic"], "Intro to robotics")
+        self.assertEqual(len(preview["syllabus"]), 1)
+
     def test_generate_course_details_uses_existing_outline(self):
         payload = {
             "target_skill": "Intro to robotics",
@@ -572,6 +639,10 @@ class SyllabusGeneratorTests(unittest.TestCase):
 
         self.assertEqual(topic["sub_contents"][0]["page_assessment"]["assessment_focus"], ["wavelength"])
         self.assertEqual(topic["sub_contents"][1]["page_assessment"]["assessment_focus"], ["polarization"])
+        self.assertNotEqual(
+            topic["sub_contents"][0]["page_assessment"]["assessment_description"],
+            topic["sub_contents"][1]["page_assessment"]["assessment_description"],
+        )
 
     def test_syllabus_web_build_payload_from_form(self):
         payload = syllabus_web.build_payload_from_form(
@@ -618,8 +689,9 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn('normalized.match(/^(\\d+(?:\\.\\d+)*)\\b/)', html)
         self.assertIn("Quiz", html)
         self.assertIn("data-page-completed", html)
-        self.assertIn("Complete the quiz to continue", html)
+        self.assertIn("Optional practice", html)
         self.assertIn("changeLessonPage", html)
+        self.assertNotIn("Assessment Details", html)
 
     def test_merge_generated_sections_uses_payload_for_static_fields(self):
         payload = {
@@ -1431,6 +1503,8 @@ class QuizRenderingTests(unittest.TestCase):
         self.assertIn("handleMcAnswer", html)
         self.assertIn("checkMatchingAnswer", html)
         self.assertIn("dataset.answered", html)
+        self.assertIn("markLessonCompleted(pagerId, currentIndex);", html)
+        self.assertNotIn('currentLesson && currentLesson.dataset.pageCompleted !== "true"', html)
 
     def test_html_backward_compat_check_for_choices(self):
         html = self._html()
@@ -1438,18 +1512,14 @@ class QuizRenderingTests(unittest.TestCase):
         self.assertIn('assessment.assessment_type === "matching"', html)
         self.assertIn('assessment.assessment_type === "true_false"', html)
 
-    def test_assessment_details_is_collapsible(self):
+    def test_topic_card_does_not_render_duplicate_assessment_section(self):
         html = self._html()
-        self.assertIn("Assessment Details", html)
-        idx_summary = html.index("Assessment Details")
-        # The summary should appear inside a <details> context
-        nearby = html[max(0, idx_summary - 200): idx_summary + 50]
-        self.assertIn("details", nearby)
+        self.assertNotIn("Assessment Details", html)
 
     def test_coach_panel_is_on_left(self):
         html = self._html()
-        self.assertIn("left: 24px", html)
-        idx = html.index("left: 24px")
+        self.assertIn("left: 16px", html)
+        idx = html.index("left: 16px")
         nearby = html[max(0, idx - 100): idx + 50]
         self.assertIn("coach", nearby.lower())
 
