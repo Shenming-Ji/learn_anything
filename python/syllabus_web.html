@@ -645,11 +645,15 @@
       white-space: normal;
     }
 
+    .lesson-copy {
+      color: var(--muted);
+    }
+
     .lesson-text p {
       margin: 0 0 0.9em;
     }
 
-    .lesson-text p:last-child {
+    .lesson-copy p:last-child {
       margin-bottom: 0;
     }
 
@@ -685,6 +689,19 @@
       margin-top: 16px;
       padding-top: 16px;
       border-top: 1px solid rgba(69, 47, 26, 0.08);
+    }
+
+    .lesson-quiz .nested-stack {
+      margin-top: 0;
+    }
+
+    .lesson-quiz .mini-card {
+      background: rgba(255, 250, 242, 0.9);
+      border-color: rgba(15, 118, 110, 0.12);
+    }
+
+    .lesson-quiz .card-copy {
+      color: var(--ink);
     }
 
     .topic-section-toggle {
@@ -2095,21 +2112,20 @@
             >
               <span class="card-label">Lesson ${escapeHtml(buildLessonLabel(topicTitle, index))}</span>
               <h5 class="card-title">${escapeHtml(lessonTitle)}</h5>
-              <div class="lesson-text">${renderMarkdownText(item.content_text || "")}</div>
-              <div class="lesson-quiz">
-                <div class="section-header">
-                  <h3>Quiz</h3>
-                  <span class="card-label">${item.page_assessment ? "Optional practice" : "No quiz included"}</span>
-                </div>
-                ${renderAssessments(
-                  item.page_assessment ? [item.page_assessment] : [],
-                  {
-                    gated: Boolean(item.page_assessment),
-                    pagerId,
-                    pageIndex: index,
-                    emptyMessage: "This lesson does not require a quiz before continuing.",
-                  }
-                )}
+              <div class="lesson-text">
+                <div class="lesson-copy">${renderMarkdownText(item.content_text || "")}</div>
+                ${item.page_assessment ? `
+                  <div class="lesson-quiz">
+                    ${renderAssessments(
+                      [item.page_assessment],
+                      {
+                        gated: true,
+                        pagerId,
+                        pageIndex: index,
+                      }
+                    )}
+                  </div>
+                ` : ""}
               </div>
             </article>
           `;
