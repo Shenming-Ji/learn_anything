@@ -1,7 +1,6 @@
 import io
 import json
 import sys
-import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -13,9 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
 import syllabus_generator
 import syllabus_service
-import content_cache_demo
 import syllabus_web
-from pipeline.cache_manager import make_cache_key
 from pipeline.image_fetcher import (
     _build_query,
     _clean_topic_title,
@@ -162,30 +159,9 @@ class SyllabusGeneratorTests(unittest.TestCase):
         skill = get_skill("content_generation")
 
         self.assertEqual(skill["version"], "v1")
-        self.assertTrue(skill["cacheable"])
         self.assertTrue(skill["skill_path"].exists())
         self.assertTrue(skill["input_schema_path"].exists())
         self.assertTrue(skill["output_schema_path"].exists())
-
-    def test_make_cache_key_is_stable_for_equivalent_inputs(self):
-        first_key = make_cache_key(
-            "content_generation",
-            "v1",
-            {
-                "topic_title": "Linear Regression",
-                "personal_parameters": ["Prefers clear explanations"],
-            },
-        )
-        second_key = make_cache_key(
-            "content_generation",
-            "v1",
-            {
-                "personal_parameters": ["Prefers clear explanations"],
-                "topic_title": "Linear   Regression",
-            },
-        )
-
-        self.assertEqual(first_key, second_key)
 
     def test_generate_syllabus_uses_skill_enriched_prompt(self):
         payload = {
@@ -266,14 +242,12 @@ class SyllabusGeneratorTests(unittest.TestCase):
             models=SimpleNamespace(generate_content=fake_generate_content)
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            stdout = io.StringIO()
-            with redirect_stdout(stdout):
-                output = syllabus_service.generate_syllabus(
-                    payload,
-                    client=fake_client,
-                    cache_dir=Path(temp_dir),
-                )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            output = syllabus_service.generate_syllabus(
+                payload,
+                client=fake_client,
+            )
 
         self.assertEqual(output["topic"], "Intro to robotics")
         self.assertEqual(output["duration_weeks"], 6)
@@ -358,7 +332,7 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(output["content"]["skill_name"], "content_generator")
         self.assertEqual(output["topic"], "Intro to robotics")
 
-    def test_generate_sub_contents_for_topic_uses_cache_after_first_run(self):
+    def test_generate_sub_contents_for_topic_calls_llm_and_normalizes_output(self):
         topic = {
             "topic_title": "1.1 Linear Regression",
             "topic_description": "Introduce the purpose, assumptions, and interpretation of linear regression.",
@@ -398,29 +372,62 @@ class SyllabusGeneratorTests(unittest.TestCase):
             models=SimpleNamespace(generate_content=fake_generate_content)
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            stdout = io.StringIO()
-            with redirect_stdout(stdout):
-                first_output = syllabus_service.generate_sub_contents_for_topic(
-                    topic=topic,
-                    course_context=course_context,
-                    client=fake_client,
-                    cache_dir=Path(temp_dir),
-                )
-                second_output = syllabus_service.generate_sub_contents_for_topic(
-                    topic=topic,
-                    course_context=course_context,
-                    client=fake_client,
-                    cache_dir=Path(temp_dir),
-                )
+        output = syllabus_service.generate_sub_contents_for_topic(
+            topic=topic,
+            course_context=course_context,
+            client=fake_client,
+        )
 
-        self.assertEqual(first_output, second_output)
         self.assertEqual(call_state["count"], 1)
+        self.assertEqual(output["topic_title"], "1.1 Linear Regression")
+        self.assertEqual(output["sub_contents"][0]["content_title"], "Regression Intuition")
 
-        logs = stdout.getvalue()
-        self.assertIn("[cache miss] content_generation: 1.1 Linear Regression, calling LLM...", logs)
-        self.assertIn("[cache saved] content_generation: 1.1 Linear Regression", logs)
-        self.assertIn("[cache hit] content_generation: 1.1 Linear Regression", logs)
+    def test_generate_sub_contents_for_topic_falls_back_when_model_returns_empty(self):
+        topic = {
+            "topic_title": "1.1 Linear Regression",
+            "topic_description": "Introduce the purpose, assumptions, and interpretation of linear regression.",
+            "estimated_hours": 4,
+            "assessments": [
+                {
+                    "assessment_type": "short_answer",
+                    "assessment_description": "Explain the meaning of the regression slope.",
+                    "assessment_focus": ["slope", "interpretation"],
+                }
+            ],
+        }
+        course_context = {
+            "topic": "Introduction to Machine Learning",
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": ["Prefers clear explanations"],
+            "goals": ["Understand supervised learning workflows"],
+        }
+        call_state = {"count": 0}
+        fake_response = {
+            "topic_title": "1.1 Linear Regression",
+            "sub_contents": [],
+        }
+
+        def fake_generate_content(**_):
+            call_state["count"] += 1
+            return SimpleNamespace(text=json.dumps(fake_response))
+
+        fake_client = SimpleNamespace(
+            models=SimpleNamespace(generate_content=fake_generate_content)
+        )
+
+        output = syllabus_service.generate_sub_contents_for_topic(
+            topic=topic,
+            course_context=course_context,
+            client=fake_client,
+        )
+
+        self.assertEqual(call_state["count"], 2)
+        self.assertEqual(output["topic_title"], "1.1 Linear Regression")
+        self.assertEqual(len(output["sub_contents"]), 4)
+        self.assertIn("Foundations", output["sub_contents"][0]["content_title"])
+        self.assertTrue(output["sub_contents"][0]["content_text"])
 
     def test_attach_page_assessments_assigns_relevant_question_to_each_page(self):
         topic = {
@@ -456,42 +463,6 @@ class SyllabusGeneratorTests(unittest.TestCase):
 
         self.assertEqual(topic["sub_contents"][0]["page_assessment"]["assessment_focus"], ["wavelength"])
         self.assertEqual(topic["sub_contents"][1]["page_assessment"]["assessment_focus"], ["polarization"])
-
-    def test_content_cache_demo_runs_sample_input_twice(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            stdout = io.StringIO()
-            with redirect_stdout(stdout):
-                first_output, second_output = content_cache_demo.run_demo(
-                    syllabus_service.DEFAULT_INPUT_PATH,
-                    cache_dir=Path(temp_dir),
-                )
-
-        self.assertEqual(first_output, second_output)
-
-        logs = stdout.getvalue()
-        self.assertIn("Using input file:", logs)
-        self.assertIn("Target skill: Laser and optical systems in space", logs)
-        self.assertIn("---- first sub-content pass ----", logs)
-        self.assertIn("[cache miss] content_generation: 1.1 Foundations of Space Optical Systems, calling LLM...", logs)
-        self.assertIn("[cache hit] content_generation: 1.1 Foundations of Space Optical Systems", logs)
-        self.assertIn("Second run additional model calls: syllabus=0, content_plan=0, sub_content=0", logs)
-        self.assertIn("Outputs match: True", logs)
-
-    def test_content_cache_demo_parse_args_supports_live_mode(self):
-        args = content_cache_demo.parse_args(
-            [
-                str(syllabus_service.DEFAULT_INPUT_PATH),
-                "--live",
-                "--model",
-                "gemini-2.5-pro",
-                "--cache-dir",
-                ".cache/demo",
-            ]
-        )
-
-        self.assertTrue(args.live)
-        self.assertEqual(args.model, "gemini-2.5-pro")
-        self.assertEqual(args.cache_dir, ".cache/demo")
 
     def test_syllabus_web_build_payload_from_form(self):
         payload = syllabus_web.build_payload_from_form(
@@ -552,39 +523,6 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn("data-page-completed", html)
         self.assertIn("Answer correctly to continue", html)
         self.assertIn("changeSubContentPage", html)
-
-    def test_build_tracking_client_counts_live_style_calls(self):
-        captured_calls = []
-
-        def fake_generate_content(**kwargs):
-            captured_calls.append(kwargs)
-            return SimpleNamespace(text=json.dumps({"ok": True}))
-
-        base_client = SimpleNamespace(
-            models=SimpleNamespace(generate_content=fake_generate_content)
-        )
-        tracking_client = content_cache_demo.build_tracking_client(base_client)
-
-        tracking_client.models.generate_content(
-            model="demo",
-            contents="syllabus",
-            config={"system_instruction": "You generate valid JSON syllabus plans only."},
-        )
-        tracking_client.models.generate_content(
-            model="demo",
-            contents="content",
-            config={"system_instruction": "You generate valid JSON content plans only."},
-        )
-        tracking_client.models.generate_content(
-            model="demo",
-            contents="sub content",
-            config={"system_instruction": "You generate valid JSON instructional sub-content chunks only."},
-        )
-
-        self.assertEqual(len(captured_calls), 3)
-        self.assertEqual(tracking_client.call_state["syllabus"], 1)
-        self.assertEqual(tracking_client.call_state["content_plan"], 1)
-        self.assertEqual(tracking_client.call_state["sub_content"], 1)
 
     def test_merge_generated_sections_uses_payload_for_static_fields(self):
         payload = {

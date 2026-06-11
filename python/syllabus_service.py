@@ -12,13 +12,11 @@ DEFAULT_INPUT_PATH = Path(__file__).with_name("inputs") / "space.json"
 PROMPT_PATH = Path(__file__).with_name("syllabus_prompt.txt")
 SKILL_PATH = BASE_DIR / "skills" / "content_generator" / "SKILL.md"
 SUB_CONTENT_SKILL_PATH = BASE_DIR / "skills" / "sub_content_generator" / "SKILL.md"
-DEFAULT_CONTENT_CACHE_DIR = BASE_DIR / ".cache" / "content_generation"
 CONTENT_GENERATION_SKILL_NAME = "content_generation"
 
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from pipeline.cache_manager import get_cached_output, make_cache_key, save_cached_output
 from pipeline.skill_registry import get_skill
 
 if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and DEFAULT_GOOGLE_CREDENTIALS.exists():
@@ -129,31 +127,6 @@ def parse_model_response(text):
             continue
 
     raise json.JSONDecodeError("No valid JSON object found in model response", text, 0)
-
-
-def build_content_cache_input(topic, course_context):
-    return {
-        "course_title": course_context.get("topic"),
-        "topic_title": topic.get("topic_title"),
-        "topic_description": topic.get("topic_description"),
-        "topic_learning_objectives": topic.get("learning_objectives"),
-        "difficulty_level": course_context.get("difficulty_level"),
-        "estimated_duration": topic.get("estimated_hours"),
-        "learning_style": course_context.get("learning_style"),
-        "hours_per_week": course_context.get("hours_per_week"),
-        "personal_parameters": course_context.get("personal_parameters", []),
-        "goals": course_context.get("goals", []),
-        "assessments": topic.get("assessments", []),
-        "output_format": {
-            "topic_title": "string",
-            "sub_contents": [
-                {
-                    "content_title": "string",
-                    "content_text": "string",
-                }
-            ],
-        },
-    }
 
 
 def normalize_content_output(output, topic=None):
@@ -291,6 +264,81 @@ def call_sub_content_generation_llm(topic, course_context, client, model_name, s
     return parse_model_response(response.text)
 
 
+def build_fallback_sub_content_output(topic, course_context):
+    topic_title = str(topic.get("topic_title") or "Untitled topic").strip()
+    topic_description = str(topic.get("topic_description") or "").strip()
+    learning_style = str(course_context.get("learning_style") or "practical").strip().lower()
+    hours_per_week = course_context.get("hours_per_week")
+    goals = [str(item).strip() for item in course_context.get("goals", []) if str(item).strip()]
+
+    assessment_focus = []
+    for assessment in topic.get("assessments", []):
+        if not isinstance(assessment, dict):
+            continue
+        assessment_focus.extend(
+            str(item).strip()
+            for item in assessment.get("assessment_focus", [])
+            if str(item).strip()
+        )
+
+    focus_text = ", ".join(dict.fromkeys(assessment_focus[:4]))
+    goals_text = "; ".join(goals[:2]) if goals else "the main course goals"
+    study_time_text = f" across roughly {hours_per_week} study hours per week" if hours_per_week else ""
+
+    style_sentence = (
+        "Use concrete examples, realistic applications, and step-by-step interpretation."
+        if learning_style == "practical"
+        else "Emphasize core definitions, conceptual structure, and the reasoning behind each idea."
+    )
+
+    sub_contents = [
+        {
+            "content_title": f"{topic_title} Foundations",
+            "content_text": (
+                f"{topic_title} starts with the core idea of the topic and why it matters inside the course. "
+                f"{topic_description or 'This section introduces the essential background, vocabulary, and scope learners need before moving deeper.'} "
+                f"The goal is to help the learner build a clear mental model of the topic{study_time_text} so later examples feel connected rather than isolated. "
+                f"This lesson should explain the basic terms, the problem this topic helps solve, and how it supports {goals_text}. "
+                f"{style_sentence}"
+            ),
+        },
+        {
+            "content_title": f"How {topic_title} Works",
+            "content_text": (
+                f"This lesson breaks {topic_title} into its main components, relationships, and decision points. "
+                f"It should explain the process in a structured way: what inputs matter, what choices are made, and what outputs or consequences follow. "
+                f"Learners should come away understanding not only the surface description of the topic, but also the internal logic that makes it work in practice. "
+                f"When useful, connect the explanation back to {topic_description or 'the main topic description'} so the instruction stays grounded and relevant."
+            ),
+        },
+        {
+            "content_title": f"Applying {topic_title}",
+            "content_text": (
+                f"This lesson focuses on application. Show how {topic_title} appears in a realistic learning or work scenario and walk through how someone would reason through it carefully. "
+                f"The explanation should highlight tradeoffs, common judgment calls, and how a learner can tell whether they are applying the idea correctly. "
+                f"{'Give especially concrete examples and practical interpretation steps. ' if learning_style == 'practical' else 'Keep the reasoning explicit and concept-first. '}"
+                f"If assessments are targeting specific areas, connect the lesson to {focus_text or 'the most important concepts in the topic'}."
+            ),
+        },
+        {
+            "content_title": f"Common Pitfalls in {topic_title}",
+            "content_text": (
+                f"This lesson closes the topic by surfacing mistakes, misconceptions, and weak reasoning patterns learners should avoid. "
+                f"Explain what beginners often misunderstand, why those misunderstandings happen, and what checks they can use to self-correct. "
+                f"Link the guidance back to {focus_text or 'the topic objectives'} so the learner can review with purpose. "
+                f"The outcome should be that the learner feels ready to study the topic independently and answer related assessments with more confidence."
+            ),
+        },
+    ]
+
+    fallback_output = {
+        "topic_title": topic_title,
+        "sub_contents": sub_contents,
+    }
+    validate_content_output(fallback_output)
+    return fallback_output
+
+
 def merge_generated_sections(payload, syllabus, content):
     output = build_outline_preview(payload, syllabus)
     output["content"] = content
@@ -348,54 +396,34 @@ def generate_sub_contents_for_topic(
     course_context,
     client=None,
     model_name="gemini-2.5-flash",
-    cache_dir=None,
 ):
     if client is None:
         client = build_client()
 
-    if cache_dir is None:
-        cache_dir = DEFAULT_CONTENT_CACHE_DIR
-
     skill = get_skill(CONTENT_GENERATION_SKILL_NAME)
+    last_error = None
+
+    for _ in range(2):
+        try:
+            output = call_sub_content_generation_llm(
+                topic=topic,
+                course_context=course_context,
+                client=client,
+                model_name=model_name,
+                skill_path=skill["skill_path"],
+            )
+            output = normalize_content_output(output, topic=topic)
+            validate_content_output(output)
+            return output
+        except (ValueError, json.JSONDecodeError) as exc:
+            last_error = exc
+
     topic_label = topic.get("topic_title", "<unknown topic>")
-
-    cache_input = build_content_cache_input(topic, course_context)
-    cache_key = make_cache_key(
-        skill_name=skill["name"],
-        skill_version=skill["version"],
-        input_data=cache_input,
-    )
-
-    if skill.get("cacheable", False):
-        cached_output = get_cached_output(cache_key, cache_dir=cache_dir)
-        if cached_output is not None:
-            try:
-                cached_output = normalize_content_output(cached_output, topic=topic)
-                validate_content_output(cached_output)
-                print(f"[cache hit] {skill['name']}: {topic_label}")
-                return cached_output
-            except ValueError:
-                print(f"[cache invalid] {skill['name']}: {topic_label}, regenerating...")
-
-    print(f"[cache miss] {skill['name']}: {topic_label}, calling LLM...")
-    output = call_sub_content_generation_llm(
-        topic=topic,
-        course_context=course_context,
-        client=client,
-        model_name=model_name,
-        skill_path=skill["skill_path"],
-    )
-    output = normalize_content_output(output, topic=topic)
-    validate_content_output(output)
-
-    if skill.get("cacheable", False):
-        save_cached_output(cache_key, output, cache_dir=cache_dir)
-        print(f"[cache saved] {skill['name']}: {topic_label}")
-
-    return output
+    print(f"[fallback] sub_content_generator: {topic_label} ({last_error})")
+    return build_fallback_sub_content_output(topic, course_context)
 
 
-def add_sub_contents(output, client=None, model_name="gemini-2.5-flash", cache_dir=None):
+def add_sub_contents(output, client=None, model_name="gemini-2.5-flash"):
     if client is None:
         client = build_client()
 
@@ -417,7 +445,6 @@ def add_sub_contents(output, client=None, model_name="gemini-2.5-flash", cache_d
             course_context=course_context,
             client=client,
             model_name=model_name,
-            cache_dir=cache_dir,
         )
         topic["sub_contents"] = sub_content_result.get("sub_contents", [])
         attach_page_assessments(topic)
@@ -485,17 +512,17 @@ def call_coach(course, message, client=None, model_name="gemini-2.5-flash"):
     return response.text.strip()
 
 
-def generate_course_details(payload, syllabus, client=None, model_name="gemini-2.5-flash", cache_dir=None):
+def generate_course_details(payload, syllabus, client=None, model_name="gemini-2.5-flash"):
     if client is None:
         client = build_client()
 
     content = generate_content_plan(payload, syllabus, client=client, model_name=model_name)
     output = merge_generated_sections(payload, syllabus, content)
-    output = add_sub_contents(output, client=client, model_name=model_name, cache_dir=cache_dir)
+    output = add_sub_contents(output, client=client, model_name=model_name)
     return add_images(output)
 
 
-def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash", cache_dir=None):
+def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash"):
     if client is None:
         client = build_client()
 
@@ -505,5 +532,4 @@ def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash", cache
         syllabus,
         client=client,
         model_name=model_name,
-        cache_dir=cache_dir,
     )

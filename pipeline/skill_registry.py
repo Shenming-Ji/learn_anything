@@ -8,7 +8,6 @@ SKILL_REGISTRY = {
         "name": "content_generation",
         "version": "v1",
         "skill_file": "skills/sub_content_generator/SKILL.md",
-        "cacheable": True,
         "input_schema": "schemas/content_input.schema.json",
         "output_schema": "schemas/content_output.schema.json",
     }
