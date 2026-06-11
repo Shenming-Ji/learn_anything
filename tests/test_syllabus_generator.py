@@ -514,16 +514,18 @@ class SyllabusGeneratorTests(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
 
         self.assertIn("function renderAssessments", html)
-        self.assertIn("function renderSubContents", html)
+        self.assertIn("function renderLessons", html)
+        self.assertIn("function buildLessonLabel", html)
         self.assertIn("function summarizeText", html)
         self.assertIn("function renderMarkdownText", html)
-        self.assertIn("Reading Page Details", html)
-        self.assertIn("Reading Pages", html)
-        self.assertIn("Learning Page", html)
-        self.assertIn("Page Check", html)
+        self.assertIn("Lesson Details", html)
+        self.assertIn("Lessons", html)
+        self.assertIn("Lesson ${escapeHtml(buildLessonLabel", html)
+        self.assertIn('normalized.match(/^(\\d+(?:\\.\\d+)*)\\b/)', html)
+        self.assertIn("Quiz", html)
         self.assertIn("data-page-completed", html)
-        self.assertIn("Answer correctly to continue", html)
-        self.assertIn("changeSubContentPage", html)
+        self.assertIn("Complete the quiz to continue", html)
+        self.assertIn("changeLessonPage", html)
 
     def test_merge_generated_sections_uses_payload_for_static_fields(self):
         payload = {
@@ -1263,8 +1265,8 @@ class CoachTests(unittest.TestCase):
         self.assertIn("coach-toggle", html)
         self.assertIn("setCoachCollapsed", html)
         self.assertIn("sendCoachMessage", html)
-        self.assertIn("changeSubContentPage", html)
-        self.assertIn("subcontent-pager", html)
+        self.assertIn("changeLessonPage", html)
+        self.assertIn("lesson-pager", html)
         self.assertIn("review-actions", html)
         self.assertIn("generateCourseDetails", html)
         self.assertIn("/api/generate-outline-async", html)
@@ -1278,7 +1280,7 @@ class CoachTests(unittest.TestCase):
         self.assertIn("status-progress-fill", html)
         self.assertIn("setProgress(", html)
         self.assertIn("outline-feedback", html)
-        self.assertIn("Extra Outline Guidance", html)
+        self.assertIn("Extra Syllabus Guidance", html)
         self.assertNotIn("personal-parameters", html)
         self.assertNotIn("outputJson.textContent", html)
         self.assertIn("Learning Coach", html)
@@ -1312,6 +1314,13 @@ class MultipleChoiceTests(unittest.TestCase):
         self.assertIn("mc-choices", html)
         self.assertIn("mc-correct", html)
         self.assertIn("mc-wrong", html)
+
+    def test_html_uses_lesson_and_quiz_labels(self):
+        html = self._html()
+        self.assertIn("Lesson Details", html)
+        self.assertIn("Lesson ${escapeHtml(buildLessonLabel", html)
+        self.assertIn("Quizzes", html)
+        self.assertIn("<h3>Quiz</h3>", html)
 
     def test_html_has_handle_mc_answer_function(self):
         html = self._html()

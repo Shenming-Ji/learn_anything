@@ -543,13 +543,13 @@
       line-height: 1.7;
     }
 
-    .subcontent-pager {
+    .lesson-pager {
       margin-top: 12px;
       display: grid;
       gap: 12px;
     }
 
-    .subcontent-pager-header {
+    .lesson-pager-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -557,7 +557,7 @@
       flex-wrap: wrap;
     }
 
-    .subcontent-nav {
+    .lesson-nav {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -569,7 +569,7 @@
       font-size: 0.88rem;
     }
 
-    .subcontent-counter {
+    .lesson-counter {
       min-width: 64px;
       text-align: center;
       font-size: 0.84rem;
@@ -577,15 +577,15 @@
       color: var(--muted);
     }
 
-    .subcontent-page {
+    .lesson-page {
       display: none;
     }
 
-    .subcontent-page.is-active {
+    .lesson-page.is-active {
       display: block;
     }
 
-    .subcontent-text {
+    .lesson-text {
       margin-top: 12px;
       max-height: 320px;
       overflow-y: auto;
@@ -599,41 +599,41 @@
     }
 
     .excerpt p,
-    .subcontent-text p {
+    .lesson-text p {
       margin: 0 0 0.9em;
     }
 
     .excerpt p:last-child,
-    .subcontent-text p:last-child {
+    .lesson-text p:last-child {
       margin-bottom: 0;
     }
 
     .excerpt ul,
     .excerpt ol,
-    .subcontent-text ul,
-    .subcontent-text ol {
+    .lesson-text ul,
+    .lesson-text ol {
       margin: 0 0 0.9em;
       padding-left: 1.4em;
     }
 
     .excerpt li,
-    .subcontent-text li {
+    .lesson-text li {
       margin-bottom: 0.35em;
     }
 
     .excerpt strong,
-    .subcontent-text strong {
+    .lesson-text strong {
       color: var(--ink);
       font-weight: 800;
     }
 
     .excerpt em,
-    .subcontent-text em {
+    .lesson-text em {
       font-style: italic;
     }
 
     .excerpt code,
-    .subcontent-text code {
+    .lesson-text code {
       padding: 0.1em 0.4em;
       border-radius: 6px;
       background: rgba(15, 118, 110, 0.08);
@@ -642,7 +642,7 @@
       font-family: var(--mono);
     }
 
-    .page-check {
+    .lesson-quiz {
       margin-top: 16px;
       padding-top: 16px;
       border-top: 1px solid rgba(69, 47, 26, 0.08);
@@ -1411,55 +1411,64 @@
       `;
     }
 
-    function countPageChecks(subContents) {
+    function countLessonQuizzes(subContents) {
       if (!Array.isArray(subContents)) return 0;
       return subContents.filter((item) => item && item.page_assessment).length;
     }
 
-    function renderSubContents(subContents, pagerId) {
+    function buildLessonLabel(topicTitle, index) {
+      const normalized = String(topicTitle || "").trim();
+      const prefixMatch = normalized.match(/^(\d+(?:\.\d+)*)\b/);
+      if (prefixMatch) {
+        return `${prefixMatch[1]}.${index + 1}`;
+      }
+      return String(index + 1);
+    }
+
+    function renderLessons(subContents, pagerId, topicTitle = "") {
       if (!subContents || subContents.length === 0) {
-        return "<p class=\"card-copy\">No reading pages generated for this topic.</p>";
+        return "<p class=\"card-copy\">No lessons generated for this topic.</p>";
       }
 
-      const firstPageComplete = !subContents[0].page_assessment;
+      const firstLessonComplete = !subContents[0].page_assessment;
 
       return `
-        <div class="subcontent-pager" id="${escapeHtml(pagerId)}" data-page-index="0">
-          <div class="subcontent-pager-header">
-            <span class="card-label">Reading Pages</span>
-            <div class="subcontent-nav">
+        <div class="lesson-pager" id="${escapeHtml(pagerId)}" data-page-index="0">
+          <div class="lesson-pager-header">
+            <span class="card-label">Lessons</span>
+            <div class="lesson-nav">
               <button
                 class="secondary-button pager-button"
                 type="button"
-                data-subcontent-prev
-                onclick="changeSubContentPage('${escapeHtml(pagerId)}', -1)"
+                data-lesson-prev
+                onclick="changeLessonPage('${escapeHtml(pagerId)}', -1)"
                 disabled
               >Previous</button>
-              <span class="subcontent-counter" data-subcontent-counter>1 / ${subContents.length}</span>
+              <span class="lesson-counter" data-lesson-counter>1 / ${subContents.length}</span>
               <button
                 class="secondary-button pager-button"
                 type="button"
-                data-subcontent-next
-                onclick="changeSubContentPage('${escapeHtml(pagerId)}', 1)"
-                ${subContents.length > 1 && firstPageComplete ? "" : "disabled"}
+                data-lesson-next
+                onclick="changeLessonPage('${escapeHtml(pagerId)}', 1)"
+                ${subContents.length > 1 && firstLessonComplete ? "" : "disabled"}
               >Next</button>
             </div>
           </div>
           <div class="nested-stack">
           ${subContents.map((item, index) => `
             <article
-              class="mini-card subcontent-page ${index === 0 ? "is-active" : ""}"
-              data-subcontent-page="${index}"
+              class="mini-card lesson-page ${index === 0 ? "is-active" : ""}"
+              data-lesson-page="${index}"
               data-page-completed="${item.page_assessment ? "false" : "true"}"
             >
-              <span class="card-label">Learning Page ${index + 1}</span>
+              <span class="card-label">Lesson ${escapeHtml(buildLessonLabel(topicTitle, index))}</span>
               <h5 class="card-title">${escapeHtml(item.content_title || "Untitled lesson")}</h5>
               <div class="excerpt">${renderMarkdownText(summarizeText(item.content_text || "", item.content_title || ""))}</div>
-              <div class="subcontent-text">${renderMarkdownText(item.content_text || "")}</div>
-              <div class="page-check">
+              <div class="lesson-text">${renderMarkdownText(item.content_text || "")}</div>
+              <div class="lesson-quiz">
                 <div class="section-header">
-                  <h3>Page Check</h3>
-                  <span class="card-label">${item.page_assessment ? "Answer correctly to continue" : "No check required"}</span>
+                  <h3>Quiz</h3>
+                  <span class="card-label">${item.page_assessment ? "Complete the quiz to continue" : "No quiz required"}</span>
                 </div>
                 ${renderAssessments(
                   item.page_assessment ? [item.page_assessment] : [],
@@ -1467,7 +1476,7 @@
                     gated: Boolean(item.page_assessment),
                     pagerId,
                     pageIndex: index,
-                    emptyMessage: "This page does not require a check before continuing.",
+                    emptyMessage: "This lesson does not require a quiz before continuing.",
                   }
                 )}
               </div>
@@ -1478,11 +1487,11 @@
       `;
     }
 
-    function setSubContentPage(pagerId, nextIndex) {
+    function setLessonPage(pagerId, nextIndex) {
       const pager = document.getElementById(pagerId);
       if (!pager) return;
 
-      const pages = Array.from(pager.querySelectorAll("[data-subcontent-page]"));
+      const pages = Array.from(pager.querySelectorAll("[data-lesson-page]"));
       if (pages.length === 0) return;
 
       const safeIndex = Math.max(0, Math.min(nextIndex, pages.length - 1));
@@ -1492,34 +1501,34 @@
         page.classList.toggle("is-active", index === safeIndex);
       });
 
-      const counter = pager.querySelector("[data-subcontent-counter]");
+      const counter = pager.querySelector("[data-lesson-counter]");
       if (counter) {
         counter.textContent = `${safeIndex + 1} / ${pages.length}`;
       }
 
-      const prevButton = pager.querySelector("[data-subcontent-prev]");
+      const prevButton = pager.querySelector("[data-lesson-prev]");
       if (prevButton) {
         prevButton.disabled = safeIndex === 0;
       }
 
-      const nextButton = pager.querySelector("[data-subcontent-next]");
+      const nextButton = pager.querySelector("[data-lesson-next]");
       if (nextButton) {
-        const currentPage = pages[safeIndex];
-        const currentPageCompleted = currentPage && currentPage.dataset.pageCompleted === "true";
-        nextButton.disabled = safeIndex === pages.length - 1 || !currentPageCompleted;
+        const currentLesson = pages[safeIndex];
+        const currentLessonCompleted = currentLesson && currentLesson.dataset.pageCompleted === "true";
+        nextButton.disabled = safeIndex === pages.length - 1 || !currentLessonCompleted;
       }
     }
 
-    function changeSubContentPage(pagerId, delta) {
+    function changeLessonPage(pagerId, delta) {
       const pager = document.getElementById(pagerId);
       if (!pager) return;
       const currentIndex = Number(pager.dataset.pageIndex || "0");
-      const pages = Array.from(pager.querySelectorAll("[data-subcontent-page]"));
-      const currentPage = pages[currentIndex];
-      if (delta > 0 && currentPage && currentPage.dataset.pageCompleted !== "true") {
+      const pages = Array.from(pager.querySelectorAll("[data-lesson-page]"));
+      const currentLesson = pages[currentIndex];
+      if (delta > 0 && currentLesson && currentLesson.dataset.pageCompleted !== "true") {
         return;
       }
-      setSubContentPage(pagerId, currentIndex + delta);
+      setLessonPage(pagerId, currentIndex + delta);
     }
 
     function renderImages(images) {
@@ -1701,11 +1710,11 @@
                 <p class="card-copy">${escapeHtml(topic.topic_description || "")}</p>
                 <div class="topic-meta">
                   <div class="mini-card">
-                    <span class="card-label">Page Checks</span>
-                    <strong>${escapeHtml(countPageChecks(topic.sub_contents || []))}</strong>
+                    <span class="card-label">Quizzes</span>
+                    <strong>${escapeHtml(countLessonQuizzes(topic.sub_contents || []))}</strong>
                   </div>
                   <div class="mini-card">
-                    <span class="card-label">Reading Pages</span>
+                    <span class="card-label">Lessons</span>
                     <strong>${escapeHtml((topic.sub_contents || []).length)}</strong>
                   </div>
                   <div class="mini-card">
@@ -1723,9 +1732,9 @@
                 </section>
                 <section class="topic-section">
                   <details class="topic-section-toggle">
-                    <summary>Reading Page Details · ${escapeHtml((topic.sub_contents || []).length)} items</summary>
+                    <summary>Lesson Details · ${escapeHtml((topic.sub_contents || []).length)} items</summary>
                     <div class="topic-section-body">
-                      ${renderSubContents(topic.sub_contents || [], `subcontent-pager-${topicIndex}`)}
+                      ${renderLessons(topic.sub_contents || [], `lesson-pager-${topicIndex}`, topic.topic_title || "")}
                     </div>
                   </details>
                 </section>
@@ -1938,7 +1947,7 @@
         const pagerId = container.dataset.pagerId;
         const pageIndex = Number(container.dataset.pageIndex || "-1");
         const pager = pagerId ? document.getElementById(pagerId) : null;
-        const page = pager ? pager.querySelector(`[data-subcontent-page="${pageIndex}"]`) : null;
+        const page = pager ? pager.querySelector(`[data-lesson-page="${pageIndex}"]`) : null;
 
         if (isCorrect) {
           container.dataset.answered = "true";
@@ -1950,10 +1959,10 @@
             page.dataset.pageCompleted = "true";
           }
           if (pagerId) {
-            setSubContentPage(pagerId, pageIndex);
+            setLessonPage(pagerId, pageIndex);
           }
           if (resultEl) {
-            resultEl.textContent = "✅ Correct! You can continue to the next page.";
+            resultEl.textContent = "✅ Correct! You can continue to the next lesson.";
             resultEl.className = "mc-result mc-result-correct";
           }
           return;
@@ -1964,7 +1973,7 @@
         });
         el.classList.add("mc-wrong");
         if (resultEl) {
-          resultEl.textContent = "❌ Not quite. Try again to unlock the next page.";
+          resultEl.textContent = "❌ Not quite. Try again to unlock the next lesson.";
           resultEl.className = "mc-result mc-result-wrong";
         }
         return;
