@@ -3,7 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -674,10 +674,12 @@ class SyllabusGeneratorTests(unittest.TestCase):
 
         with patch.object(syllabus_generator, "generate_syllabus", return_value=json.loads(fake_response.text)):
             stdout = io.StringIO()
-            with redirect_stdout(stdout):
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
                 syllabus_generator.main([str(syllabus_service.DEFAULT_INPUT_PATH)])
 
         output = json.loads(stdout.getvalue())
+        self.assertIn("Generating syllabus from", stderr.getvalue())
         self.assertEqual(output["topic"], "Laser and optical systems in space")
         self.assertEqual(len(output["syllabus"]), 1)
         self.assertEqual(output["content"]["skill_name"], "content_generator")
@@ -1110,6 +1112,41 @@ class CoachTests(unittest.TestCase):
         self.assertEqual(sent["data"]["syllabus"], outline)
         self.assertEqual(sent["data"]["output"], preview)
 
+    def test_web_handler_start_outline_task_returns_task_id(self):
+        fake_task = {
+            "task_id": "outline-task-1",
+            "kind": "outline",
+            "state": "queued",
+            "progress": 0,
+            "message": "Queued outline generation...",
+            "error": None,
+            "result": None,
+        }
+
+        with patch.object(syllabus_web, "start_outline_task", return_value=fake_task):
+            handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+            sent = {}
+
+            def fake_send_json(data, status=200):
+                sent["data"] = data
+                sent["status"] = status
+
+            handler._send_json = fake_send_json
+            body = json.dumps({
+                "target_skill": "ML",
+                "duration_weeks": 4,
+                "difficulty_level": 2,
+                "learning_style": "practical",
+                "hours_per_week": 5,
+                "personal_parameters": [],
+            }).encode()
+            handler.rfile = io.BytesIO(body)
+            handler.headers = {"Content-Length": str(len(body))}
+            handler._start_outline_task()
+
+        self.assertEqual(sent["status"], 202)
+        self.assertEqual(sent["data"]["task_id"], "outline-task-1")
+
     def test_web_handler_generate_details_requires_syllabus(self):
         handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
         sent = {}
@@ -1182,6 +1219,78 @@ class CoachTests(unittest.TestCase):
         self.assertEqual(sent["status"], 200)
         self.assertEqual(sent["data"]["output"], fake_output)
 
+    def test_web_handler_start_details_task_returns_task_id(self):
+        fake_task = {
+            "task_id": "details-task-1",
+            "kind": "details",
+            "state": "queued",
+            "progress": 0,
+            "message": "Queued full course generation...",
+            "error": None,
+            "result": None,
+        }
+
+        with patch.object(syllabus_web, "start_details_task", return_value=fake_task):
+            handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+            sent = {}
+
+            def fake_send_json(data, status=200):
+                sent["data"] = data
+                sent["status"] = status
+
+            handler._send_json = fake_send_json
+            body = json.dumps({
+                "payload": {
+                    "target_skill": "ML",
+                    "duration_weeks": 4,
+                    "difficulty_level": 2,
+                    "learning_style": "practical",
+                    "hours_per_week": 5,
+                    "personal_parameters": [],
+                },
+                "syllabus": {
+                    "topic": "ML",
+                    "pedagogical_style": "Practical and structured.",
+                    "goals": ["Understand regression"],
+                    "syllabus": [{"week": 1, "topic": "Linear Regression", "learning_objectives": [], "assessments": []}],
+                },
+            }).encode()
+            handler.rfile = io.BytesIO(body)
+            handler.headers = {"Content-Length": str(len(body))}
+            handler._start_details_task()
+
+        self.assertEqual(sent["status"], 202)
+        self.assertEqual(sent["data"]["task_id"], "details-task-1")
+
+    def test_web_handler_task_status_returns_task_snapshot(self):
+        task = {
+            "task_id": "task-123",
+            "kind": "outline",
+            "state": "running",
+            "progress": 35,
+            "message": "Outline generated. Preparing preview...",
+            "error": None,
+            "result": None,
+        }
+        syllabus_web.TASKS["task-123"] = task
+
+        try:
+            handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
+            sent = {}
+
+            def fake_send_json(data, status=200):
+                sent["data"] = data
+                sent["status"] = status
+
+            handler._send_json = fake_send_json
+            handler._serve_task_status("/api/tasks/task-123")
+        finally:
+            syllabus_web.TASKS.clear()
+
+        self.assertEqual(sent["status"], 200)
+        self.assertEqual(sent["data"]["task_id"], "task-123")
+        self.assertEqual(sent["data"]["progress"], 35)
+
     def test_build_coach_prompt_with_mc_assessments(self):
         course = self._sample_course()
         course["content"]["topics"][0]["assessments"] = [{
@@ -1206,11 +1315,17 @@ class CoachTests(unittest.TestCase):
         self.assertIn("subcontent-pager", html)
         self.assertIn("review-actions", html)
         self.assertIn("generateCourseDetails", html)
-        self.assertIn("/api/generate-outline", html)
-        self.assertIn("/api/generate-details", html)
+        self.assertIn("/api/generate-outline-async", html)
+        self.assertIn("/api/generate-details-async", html)
+        self.assertIn("/api/tasks/", html)
+        self.assertIn("waitForTask", html)
         self.assertIn("setCoachCollapsed(true);", html)
         self.assertIn('if (generateButton.disabled) return;', html)
         self.assertIn('generateButton.setAttribute("aria-busy", "true")', html)
+        self.assertIn("status-progress", html)
+        self.assertIn("status-progress-fill", html)
+        self.assertIn("setProgress(", html)
+        self.assertNotIn("outputJson.textContent", html)
         self.assertIn("Learning Coach", html)
         self.assertIn("/coach", html)
         self.assertNotIn("input-preview", html)

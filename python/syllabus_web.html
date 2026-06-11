@@ -287,6 +287,74 @@
       color: #a11d33;
     }
 
+    .status-progress {
+      display: none;
+      margin-top: 10px;
+    }
+
+    .status-progress.is-visible {
+      display: block;
+    }
+
+    .status-progress-track {
+      position: relative;
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.12);
+      border: 1px solid rgba(15, 118, 110, 0.14);
+    }
+
+    .status-progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--brand) 0%, #159a90 100%);
+      box-shadow: 0 8px 16px rgba(15, 118, 110, 0.2);
+      transition: width 240ms ease, background 180ms ease;
+    }
+
+    .status-progress.is-active .status-progress-fill {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-progress.is-active .status-progress-fill::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      animation: statusProgressSweep 1.2s linear infinite;
+    }
+
+    .status-progress.is-complete .status-progress-fill {
+      background: linear-gradient(90deg, var(--brand) 0%, #0b4f4a 100%);
+    }
+
+    .status-progress.is-error .status-progress-track {
+      background: rgba(161, 29, 51, 0.08);
+      border-color: rgba(161, 29, 51, 0.16);
+    }
+
+    .status-progress.is-error .status-progress-fill {
+      background: linear-gradient(90deg, #d9485f 0%, #a11d33 100%);
+      box-shadow: 0 8px 16px rgba(161, 29, 51, 0.18);
+    }
+
+    @keyframes statusProgressSweep {
+      from {
+        transform: translateX(-100%);
+      }
+      to {
+        transform: translateX(220%);
+      }
+    }
+
     .review-actions {
       display: none;
       gap: 10px;
@@ -966,6 +1034,22 @@
         </form>
 
         <p class="status" id="status-line"></p>
+        <div
+          id="status-progress"
+          class="status-progress"
+          aria-hidden="true"
+        >
+          <div
+            class="status-progress-track"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-label="Generation progress"
+          >
+            <div class="status-progress-fill" id="status-progress-fill"></div>
+          </div>
+        </div>
       </aside>
 
       <main class="output-stack">
@@ -1013,6 +1097,8 @@
   <script>
     const form = document.getElementById("syllabus-form");
     const statusLine = document.getElementById("status-line");
+    const statusProgress = document.getElementById("status-progress");
+    const statusProgressFill = document.getElementById("status-progress-fill");
     const readableOutput = document.getElementById("readable-output");
     const resultBadge = document.getElementById("result-badge");
     const generateButton = document.getElementById("generate-button");
@@ -1025,6 +1111,7 @@
     const coachInput = document.getElementById("coach-input");
     const coachSend = document.getElementById("coach-send");
     const coachToggle = document.getElementById("coach-toggle");
+    const TASK_POLL_INTERVAL_MS = 700;
     let currentCourse = null;
     let currentPayload = null;
     let currentOutline = null;
@@ -1048,6 +1135,81 @@
     function setStatus(message, isError = false) {
       statusLine.textContent = message;
       statusLine.classList.toggle("error", isError);
+    }
+
+    function setProgress(value, state = "idle") {
+      const clampedValue = Math.max(0, Math.min(100, Number(value) || 0));
+      const isVisible = state !== "idle";
+      statusProgress.classList.toggle("is-visible", isVisible);
+      statusProgress.classList.toggle("is-active", state === "active");
+      statusProgress.classList.toggle("is-complete", state === "complete");
+      statusProgress.classList.toggle("is-error", state === "error");
+      statusProgress.setAttribute("aria-hidden", String(!isVisible));
+      statusProgressFill.style.width = `${clampedValue}%`;
+      statusProgress.firstElementChild.setAttribute("aria-valuenow", String(Math.round(clampedValue)));
+    }
+
+    function resetProgress() {
+      setProgress(0, "idle");
+    }
+
+    function delay(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    function applyTaskSnapshot(task) {
+      if (!task) return;
+
+      let progressState = "active";
+      if (task.state === "completed") {
+        progressState = "complete";
+      } else if (task.state === "error") {
+        progressState = "error";
+      }
+
+      setStatus(task.message || "Working...", task.state === "error");
+      setProgress(task.progress || 0, progressState);
+    }
+
+    async function startTask(endpoint, body) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to start generation task.");
+      }
+
+      applyTaskSnapshot(data);
+      return data.task_id;
+    }
+
+    async function waitForTask(taskId) {
+      while (true) {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to read task status.");
+        }
+
+        applyTaskSnapshot(data);
+
+        if (data.state === "completed") {
+          return data.result;
+        }
+
+        if (data.state === "error") {
+          throw new Error(data.error || data.message || "Generation failed.");
+        }
+
+        await delay(TASK_POLL_INTERVAL_MS);
+      }
     }
 
     function escapeHtml(text) {
@@ -1540,6 +1702,14 @@
                 </div>
                 <section class="topic-section">
                   <details class="topic-section-toggle">
+                    <summary>Assessment Details · ${escapeHtml((topic.assessments || []).length)} items</summary>
+                    <div class="topic-section-body">
+                      ${renderAssessments(topic.assessments || [])}
+                    </div>
+                  </details>
+                </section>
+                <section class="topic-section">
+                  <details class="topic-section-toggle">
                     <summary>Reading Page Details · ${escapeHtml((topic.sub_contents || []).length)} items</summary>
                     <div class="topic-section-body">
                       ${renderSubContents(topic.sub_contents || [], `subcontent-pager-${topicIndex}`)}
@@ -1570,6 +1740,7 @@
       coachPanel.style.display = "none";
       resultBadge.textContent = "Draft changed";
       setStatus(message);
+      resetProgress();
     }
 
     function fillForm(payload) {
@@ -1594,12 +1765,12 @@
       currentCourse = null;
       currentPayload = null;
       currentOutline = null;
-      outputJson.textContent = "{}";
       readableOutput.className = "placeholder";
       readableOutput.textContent = "Generate a syllabus outline to review the weekly plan before creating topics, content, and assessments.";
       setReviewActionsVisible(false);
       coachPanel.style.display = "none";
       setStatus(`Loaded sample: ${sampleName}.`);
+      resetProgress();
       resultBadge.textContent = "Sample loaded";
     }
 
@@ -1608,6 +1779,7 @@
       if (generateButton.disabled) return;
 
       setStatus("Generating syllabus outline for review...");
+      setProgress(10, "active");
       resultBadge.textContent = "Generating outline";
       generateButton.disabled = true;
       generateButton.setAttribute("aria-busy", "true");
@@ -1621,35 +1793,26 @@
       setReviewActionsVisible(false);
 
       try {
-        const response = await fetch("/api/generate-outline", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            target_skill: fields.target_skill.value,
-            duration_weeks: fields.duration_weeks.value,
-            difficulty_level: fields.difficulty_level.value,
-            learning_style: fields.learning_style.value,
-            hours_per_week: fields.hours_per_week.value,
-            personal_parameters: fields.personal_parameters.value,
-          }),
+        const taskId = await startTask("/api/generate-outline-async", {
+          target_skill: fields.target_skill.value,
+          duration_weeks: fields.duration_weeks.value,
+          difficulty_level: fields.difficulty_level.value,
+          learning_style: fields.learning_style.value,
+          hours_per_week: fields.hours_per_week.value,
+          personal_parameters: fields.personal_parameters.value,
         });
+        const result = await waitForTask(taskId);
 
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "Generation failed.");
-        }
-
-        currentPayload = data.payload;
-        currentOutline = data.syllabus;
-        renderOutlineOutput(data.output);
+        currentPayload = result.payload;
+        currentOutline = result.syllabus;
+        renderOutlineOutput(result.output);
         setStatus("Outline ready. Review it, then continue or re-generate.");
         resultBadge.textContent = "Review outline";
         approveOutlineButton.disabled = false;
         regenerateOutlineButton.disabled = false;
         setReviewActionsVisible(true);
       } catch (error) {
+        setProgress(100, "error");
         setStatus(error.message, true);
         resultBadge.textContent = "Error";
       } finally {
@@ -1663,6 +1826,7 @@
       if (approveOutlineButton.disabled || !currentPayload || !currentOutline) return;
 
       setStatus("Generating topics, detailed content, assessments, and images...");
+      setProgress(50, "active");
       resultBadge.textContent = "Generating full course";
       approveOutlineButton.disabled = true;
       regenerateOutlineButton.disabled = true;
@@ -1671,29 +1835,20 @@
       generateButton.textContent = "Generating Full Course...";
 
       try {
-        const response = await fetch("/api/generate-details", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            payload: currentPayload,
-            syllabus: currentOutline,
-          }),
+        const taskId = await startTask("/api/generate-details-async", {
+          payload: currentPayload,
+          syllabus: currentOutline,
         });
+        const result = await waitForTask(taskId);
 
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "Detailed generation failed.");
-        }
-
-        renderReadableOutput(data.output);
+        renderReadableOutput(result.output);
         setStatus("Full course generation complete.");
         resultBadge.textContent = "Generated";
-        currentCourse = data.output;
+        currentCourse = result.output;
         setReviewActionsVisible(false);
         coachPanel.style.display = "flex";
       } catch (error) {
+        setProgress(100, "error");
         setStatus(error.message, true);
         resultBadge.textContent = "Outline ready";
         approveOutlineButton.disabled = false;
@@ -1721,6 +1876,7 @@
       coachPanel.style.display = "none";
       resultBadge.textContent = "Waiting for input";
       setStatus("Form cleared.");
+      resetProgress();
     }
 
     form.addEventListener("submit", generateOutline);

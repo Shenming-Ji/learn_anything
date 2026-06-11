@@ -1,5 +1,8 @@
 import argparse
 import json
+import threading
+import uuid
+from copy import deepcopy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -7,12 +10,17 @@ from urllib.parse import parse_qs, urlparse
 
 from syllabus_service import (
     DEFAULT_INPUT_PATH,
+    add_images,
+    add_sub_contents,
     build_outline_preview,
+    build_client,
     call_coach,
     generate_course_details,
+    generate_content_plan,
     generate_syllabus,
     generate_syllabus_outline,
     load_payload,
+    merge_generated_sections,
 )
 
 
@@ -22,6 +30,8 @@ SAMPLE_INPUTS = {
     "space": DEFAULT_INPUT_PATH,
     "ds_health": Path(__file__).with_name("inputs") / "ds_health.json",
 }
+TASKS = {}
+TASKS_LOCK = threading.Lock()
 
 
 def split_personal_parameters(raw_value):
@@ -72,6 +82,126 @@ def load_sample_payload(sample_name):
     return load_payload(SAMPLE_INPUTS[sample_name])
 
 
+def _create_task(kind, initial_message):
+    task_id = uuid.uuid4().hex
+    task = {
+        "task_id": task_id,
+        "kind": kind,
+        "state": "queued",
+        "progress": 0,
+        "message": initial_message,
+        "error": None,
+        "result": None,
+    }
+    with TASKS_LOCK:
+        TASKS[task_id] = task
+    return deepcopy(task)
+
+
+def _update_task(task_id, **updates):
+    with TASKS_LOCK:
+        task = TASKS.get(task_id)
+        if task is None:
+            return None
+        task.update(updates)
+        return deepcopy(task)
+
+
+def _get_task(task_id):
+    with TASKS_LOCK:
+        task = TASKS.get(task_id)
+        return deepcopy(task) if task is not None else None
+
+
+def _run_outline_task(task_id, payload):
+    try:
+        _update_task(
+            task_id,
+            state="running",
+            progress=10,
+            message="Started outline generation.",
+        )
+        syllabus = generate_syllabus_outline(payload)
+        _update_task(
+            task_id,
+            state="running",
+            progress=35,
+            message="Outline generated. Preparing preview...",
+        )
+        output = build_outline_preview(payload, syllabus)
+        _update_task(
+            task_id,
+            state="completed",
+            progress=100,
+            message="Outline ready.",
+            result={"payload": payload, "syllabus": syllabus, "output": output},
+        )
+    except Exception as exc:  # pragma: no cover
+        _update_task(
+            task_id,
+            state="error",
+            progress=100,
+            message=f"Outline generation failed: {exc}",
+            error=str(exc),
+        )
+
+
+def _run_details_task(task_id, payload, syllabus):
+    try:
+        client = build_client()
+        _update_task(
+            task_id,
+            state="running",
+            progress=50,
+            message="Generating content plan...",
+        )
+        content = generate_content_plan(payload, syllabus, client=client)
+        output = merge_generated_sections(payload, syllabus, content)
+        _update_task(
+            task_id,
+            state="running",
+            progress=75,
+            message="Generating sub contents...",
+        )
+        output = add_sub_contents(output, client=client)
+        _update_task(
+            task_id,
+            state="running",
+            progress=90,
+            message="Fetching images...",
+        )
+        output = add_images(output)
+        _update_task(
+            task_id,
+            state="completed",
+            progress=100,
+            message="Full course generation complete.",
+            result={"payload": payload, "syllabus": syllabus, "output": output},
+        )
+    except Exception as exc:  # pragma: no cover
+        _update_task(
+            task_id,
+            state="error",
+            progress=100,
+            message=f"Full course generation failed: {exc}",
+            error=str(exc),
+        )
+
+
+def start_outline_task(payload):
+    task = _create_task("outline", "Queued outline generation...")
+    thread = threading.Thread(target=_run_outline_task, args=(task["task_id"], payload), daemon=True)
+    thread.start()
+    return task
+
+
+def start_details_task(payload, syllabus):
+    task = _create_task("details", "Queued full course generation...")
+    thread = threading.Thread(target=_run_details_task, args=(task["task_id"], payload, syllabus), daemon=True)
+    thread.start()
+    return task
+
+
 class SyllabusWebHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -84,6 +214,10 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             self._serve_sample(parsed.query)
             return
 
+        if parsed.path.startswith("/api/tasks/"):
+            self._serve_task_status(parsed.path)
+            return
+
         self._send_json({"error": "Not found."}, status=HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
@@ -93,8 +227,16 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             self._generate_outline()
             return
 
+        if parsed.path == "/api/generate-outline-async":
+            self._start_outline_task()
+            return
+
         if parsed.path == "/api/generate-details":
             self._generate_details()
+            return
+
+        if parsed.path == "/api/generate-details-async":
+            self._start_details_task()
             return
 
         if parsed.path == "/api/generate":
@@ -131,6 +273,14 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
 
         self._send_json({"payload": payload})
 
+    def _serve_task_status(self, path):
+        task_id = path.rsplit("/", 1)[-1].strip()
+        task = _get_task(task_id)
+        if task is None:
+            self._send_json({"error": f"Unknown task '{task_id}'."}, status=HTTPStatus.NOT_FOUND)
+            return
+        self._send_json(task)
+
     def _generate_syllabus(self):
         request_data = self._read_json_body()
         if request_data is None:
@@ -147,6 +297,20 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"payload": payload, "output": output})
+
+    def _start_outline_task(self):
+        request_data = self._read_json_body()
+        if request_data is None:
+            return
+
+        try:
+            payload = build_payload_from_form(request_data)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        task = start_outline_task(payload)
+        self._send_json(task, status=HTTPStatus.ACCEPTED)
 
     def _generate_outline(self):
         request_data = self._read_json_body()
@@ -165,6 +329,25 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"payload": payload, "syllabus": syllabus, "output": output})
+
+    def _start_details_task(self):
+        request_data = self._read_json_body()
+        if request_data is None:
+            return
+
+        try:
+            payload = build_payload_from_form(request_data.get("payload", {}))
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        syllabus = request_data.get("syllabus")
+        if not isinstance(syllabus, dict) or not syllabus:
+            self._send_json({"error": "syllabus is required."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        task = start_details_task(payload, syllabus)
+        self._send_json(task, status=HTTPStatus.ACCEPTED)
 
     def _generate_details(self):
         request_data = self._read_json_body()
