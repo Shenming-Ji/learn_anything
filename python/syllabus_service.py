@@ -13,6 +13,7 @@ PROMPT_PATH = Path(__file__).with_name("syllabus_prompt.txt")
 SKILL_PATH = BASE_DIR / "skills" / "content_generator" / "SKILL.md"
 SUB_CONTENT_SKILL_PATH = BASE_DIR / "skills" / "sub_content_generator" / "SKILL.md"
 CONTENT_GENERATION_SKILL_NAME = "content_generation"
+MIN_SUB_CONTENTS_PER_TOPIC = 4
 
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
@@ -104,6 +105,7 @@ def build_sub_content_prompt(topic, course_context, skill_path=SUB_CONTENT_SKILL
         f"Input:\n{json.dumps(sub_content_input, indent=2, ensure_ascii=False)}\n\n"
         "Generate JSON that follows the sub_content_generator SKILL.md instructions. "
         "The top-level object must include `topic_title` and a non-empty `sub_contents` array. "
+        f"Generate at least {MIN_SUB_CONTENTS_PER_TOPIC} distinct `sub_contents` items. Do not collapse the topic into a single lesson. "
         "Each item in `sub_contents` must include `content_title` and `content_text`. "
         "Return JSON only."
     )
@@ -167,19 +169,6 @@ def normalize_content_output(output, topic=None):
                 normalized_output["sub_contents"] = fallback_value
                 break
 
-    if (
-        (not isinstance(raw_sub_contents, list) or not raw_sub_contents)
-        and isinstance(normalized_output.get("content_title"), str)
-        and isinstance(normalized_output.get("content_text"), str)
-    ):
-        raw_sub_contents = [
-            {
-                "content_title": normalized_output.get("content_title"),
-                "content_text": normalized_output.get("content_text"),
-            }
-        ]
-        normalized_output["sub_contents"] = raw_sub_contents
-
     if isinstance(raw_sub_contents, list):
         normalized_sub_contents = []
         for chunk in raw_sub_contents:
@@ -216,6 +205,10 @@ def validate_content_output(output):
     sub_contents = output.get("sub_contents")
     if not isinstance(sub_contents, list) or not sub_contents:
         raise ValueError("Content output must include non-empty sub_contents.")
+    if len(sub_contents) < MIN_SUB_CONTENTS_PER_TOPIC:
+        raise ValueError(
+            f"Content output must include at least {MIN_SUB_CONTENTS_PER_TOPIC} sub_contents."
+        )
 
     for index, chunk in enumerate(sub_contents, start=1):
         if not isinstance(chunk, dict):

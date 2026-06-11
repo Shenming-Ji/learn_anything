@@ -113,6 +113,17 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(chunk["content_title"], "Optical Basics")
         self.assertEqual(chunk["content_text"], "A short explanation.")
 
+    def test_normalize_content_output_does_not_convert_single_top_level_content_into_lesson_list(self):
+        output = syllabus_service.normalize_content_output(
+            {
+                "topic_title": "1.1 Fundamentals of Optics",
+                "content_title": "Optical Basics",
+                "content_text": "A short explanation.",
+            }
+        )
+
+        self.assertNotIn("sub_contents", output)
+
     def test_load_system_prompt_reads_prompt_file(self):
         prompt = syllabus_service.load_system_prompt()
 
@@ -403,7 +414,19 @@ class SyllabusGeneratorTests(unittest.TestCase):
                 {
                     "content_title": "Regression Intuition",
                     "content_text": "Linear regression maps how inputs relate to an output through a simple predictive relationship.",
-                }
+                },
+                {
+                    "content_title": "Slope and Intercept",
+                    "content_text": "The slope captures how much the prediction changes when the input increases by one unit.",
+                },
+                {
+                    "content_title": "Model Assumptions",
+                    "content_text": "Linear regression works best when the relationship is approximately linear and the residual pattern is stable.",
+                },
+                {
+                    "content_title": "Practical Interpretation",
+                    "content_text": "Interpreting a fitted line means connecting coefficients back to the real-world meaning of the variables.",
+                },
             ],
         }
 
@@ -473,6 +496,47 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertTrue(output["sub_contents"][0]["content_text"])
         self.assertNotIn("1.1", output["sub_contents"][0]["content_title"])
         self.assertNotIn("1.1", output["sub_contents"][0]["content_text"].split(". ")[0])
+
+    def test_generate_sub_contents_for_topic_falls_back_when_model_returns_too_few_lessons(self):
+        topic = {
+            "topic_title": "1.1 Linear Regression",
+            "topic_description": "Introduce the purpose, assumptions, and interpretation of linear regression.",
+            "estimated_hours": 4,
+            "assessments": [],
+        }
+        course_context = {
+            "topic": "Introduction to Machine Learning",
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": [],
+            "goals": ["Understand supervised learning workflows"],
+        }
+        fake_response = {
+            "topic_title": "1.1 Linear Regression",
+            "sub_contents": [
+                {
+                    "content_title": "Regression Intuition",
+                    "content_text": "A useful explanation.",
+                }
+            ],
+        }
+
+        def fake_generate_content(**_):
+            return SimpleNamespace(text=json.dumps(fake_response))
+
+        fake_client = SimpleNamespace(
+            models=SimpleNamespace(generate_content=fake_generate_content)
+        )
+
+        output = syllabus_service.generate_sub_contents_for_topic(
+            topic=topic,
+            course_context=course_context,
+            client=fake_client,
+        )
+
+        self.assertEqual(len(output["sub_contents"]), syllabus_service.MIN_SUB_CONTENTS_PER_TOPIC)
+        self.assertNotEqual(output["sub_contents"][0]["content_title"], "Regression Intuition")
 
     def test_attach_page_assessments_assigns_relevant_question_to_each_page(self):
         topic = {
