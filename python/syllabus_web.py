@@ -34,21 +34,6 @@ TASKS = {}
 TASKS_LOCK = threading.Lock()
 
 
-def split_personal_parameters(raw_value):
-    if isinstance(raw_value, list):
-        return [str(item).strip() for item in raw_value if str(item).strip()]
-
-    if raw_value is None:
-        return []
-
-    text = str(raw_value).replace("\r", "\n")
-    items = []
-    for line in text.split("\n"):
-        parts = [part.strip() for part in line.split(",")]
-        items.extend(part for part in parts if part)
-    return items
-
-
 def build_payload_from_form(form_data):
     target_skill = str(form_data.get("target_skill", "")).strip()
     if not target_skill:
@@ -72,7 +57,7 @@ def build_payload_from_form(form_data):
         "difficulty_level": read_int("difficulty_level"),
         "learning_style": str(form_data.get("learning_style", "practical")).strip() or "practical",
         "hours_per_week": read_int("hours_per_week"),
-        "personal_parameters": split_personal_parameters(form_data.get("personal_parameters")),
+        "personal_parameters": [],
     }
 
 
@@ -113,7 +98,7 @@ def _get_task(task_id):
         return deepcopy(task) if task is not None else None
 
 
-def _run_outline_task(task_id, payload):
+def _run_outline_task(task_id, payload, outline_feedback="", regenerate=False):
     try:
         _update_task(
             task_id,
@@ -121,7 +106,11 @@ def _run_outline_task(task_id, payload):
             progress=10,
             message="Started outline generation.",
         )
-        syllabus = generate_syllabus_outline(payload)
+        syllabus = generate_syllabus_outline(
+            payload,
+            outline_feedback=outline_feedback,
+            regenerate=regenerate,
+        )
         _update_task(
             task_id,
             state="running",
@@ -188,9 +177,13 @@ def _run_details_task(task_id, payload, syllabus):
         )
 
 
-def start_outline_task(payload):
+def start_outline_task(payload, outline_feedback="", regenerate=False):
     task = _create_task("outline", "Queued outline generation...")
-    thread = threading.Thread(target=_run_outline_task, args=(task["task_id"], payload), daemon=True)
+    thread = threading.Thread(
+        target=_run_outline_task,
+        args=(task["task_id"], payload, outline_feedback, regenerate),
+        daemon=True,
+    )
     thread.start()
     return task
 
@@ -309,7 +302,9 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
-        task = start_outline_task(payload)
+        outline_feedback = str(request_data.get("outline_feedback", "")).strip()
+        regenerate = bool(request_data.get("regenerate_outline"))
+        task = start_outline_task(payload, outline_feedback=outline_feedback, regenerate=regenerate)
         self._send_json(task, status=HTTPStatus.ACCEPTED)
 
     def _generate_outline(self):
@@ -319,7 +314,11 @@ class SyllabusWebHandler(BaseHTTPRequestHandler):
 
         try:
             payload = build_payload_from_form(request_data)
-            syllabus = generate_syllabus_outline(payload)
+            syllabus = generate_syllabus_outline(
+                payload,
+                outline_feedback=str(request_data.get("outline_feedback", "")).strip(),
+                regenerate=bool(request_data.get("regenerate_outline")),
+            )
             output = build_outline_preview(payload, syllabus)
         except ValueError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)

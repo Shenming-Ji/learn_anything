@@ -125,6 +125,25 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn('"target_skill": "Intro to robotics"', prompt)
         self.assertIn("Return only the syllabus-related fields", prompt)
 
+    def test_build_syllabus_prompt_includes_regeneration_guidance(self):
+        payload = {
+            "target_skill": "Intro to robotics",
+            "duration_weeks": 6,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": [],
+        }
+
+        prompt = syllabus_service.build_syllabus_prompt(
+            payload,
+            outline_feedback="Make the syllabus more project-based.",
+            regenerate=True,
+        )
+
+        self.assertIn("Additional syllabus guidance", prompt)
+        self.assertIn("Make the syllabus more project-based.", prompt)
+
     def test_build_content_prompt_includes_skill_and_syllabus_context(self):
         payload = {
             "target_skill": "Intro to robotics",
@@ -472,31 +491,13 @@ class SyllabusGeneratorTests(unittest.TestCase):
                 "difficulty_level": "2",
                 "learning_style": "practical",
                 "hours_per_week": "5",
-                "personal_parameters": "Hands-on learner\nNeeds step-by-step structure",
             }
         )
 
         self.assertEqual(payload["target_skill"], "Intro to robotics")
         self.assertEqual(payload["duration_weeks"], 6)
         self.assertEqual(payload["difficulty_level"], 2)
-        self.assertEqual(
-            payload["personal_parameters"],
-            ["Hands-on learner", "Needs step-by-step structure"],
-        )
-
-    def test_syllabus_web_split_personal_parameters_supports_commas_and_lines(self):
-        items = syllabus_web.split_personal_parameters(
-            "Prefers examples, Wants pacing help\nNeeds review checkpoints"
-        )
-
-        self.assertEqual(
-            items,
-            [
-                "Prefers examples",
-                "Wants pacing help",
-                "Needs review checkpoints",
-            ],
-        )
+        self.assertEqual(payload["personal_parameters"], [])
 
     def test_syllabus_web_loads_known_sample(self):
         payload = syllabus_web.load_sample_payload("space")
@@ -1061,7 +1062,7 @@ class CoachTests(unittest.TestCase):
             "result": None,
         }
 
-        with patch.object(syllabus_web, "start_outline_task", return_value=fake_task):
+        with patch.object(syllabus_web, "start_outline_task", return_value=fake_task) as start_outline_task_mock:
             handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
             sent = {}
 
@@ -1076,7 +1077,8 @@ class CoachTests(unittest.TestCase):
                 "difficulty_level": 2,
                 "learning_style": "practical",
                 "hours_per_week": 5,
-                "personal_parameters": [],
+                "outline_feedback": "Make it more hands-on.",
+                "regenerate_outline": True,
             }).encode()
             handler.rfile = io.BytesIO(body)
             handler.headers = {"Content-Length": str(len(body))}
@@ -1084,6 +1086,18 @@ class CoachTests(unittest.TestCase):
 
         self.assertEqual(sent["status"], 202)
         self.assertEqual(sent["data"]["task_id"], "outline-task-1")
+        start_outline_task_mock.assert_called_once_with(
+            {
+                "target_skill": "ML",
+                "duration_weeks": 4,
+                "difficulty_level": 2,
+                "learning_style": "practical",
+                "hours_per_week": 5,
+                "personal_parameters": [],
+            },
+            outline_feedback="Make it more hands-on.",
+            regenerate=True,
+        )
 
     def test_web_handler_generate_details_requires_syllabus(self):
         handler = syllabus_web.SyllabusWebHandler.__new__(syllabus_web.SyllabusWebHandler)
@@ -1263,6 +1277,9 @@ class CoachTests(unittest.TestCase):
         self.assertIn("status-progress", html)
         self.assertIn("status-progress-fill", html)
         self.assertIn("setProgress(", html)
+        self.assertIn("outline-feedback", html)
+        self.assertIn("Extra Outline Guidance", html)
+        self.assertNotIn("personal-parameters", html)
         self.assertNotIn("outputJson.textContent", html)
         self.assertIn("Learning Coach", html)
         self.assertIn("/coach", html)

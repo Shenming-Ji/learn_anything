@@ -45,13 +45,28 @@ def load_sub_content_generation_skill(skill_path=SUB_CONTENT_SKILL_PATH):
     return skill_path.read_text(encoding="utf-8")
 
 
-def build_syllabus_prompt(payload, prompt_path=PROMPT_PATH):
+def build_syllabus_prompt(payload, outline_feedback="", regenerate=False, prompt_path=PROMPT_PATH):
     syllabus_prompt = load_system_prompt(prompt_path)
     user_input = json.dumps(payload, indent=2, ensure_ascii=False)
+    feedback = str(outline_feedback or "").strip()
+    guidance = ""
+
+    if feedback:
+        guidance = (
+            "\n\nAdditional syllabus guidance for this generation:\n"
+            f"{feedback}\n\n"
+            "Treat this guidance as higher priority than stylistic defaults when you regenerate the outline."
+        )
+    elif regenerate:
+        guidance = (
+            "\n\nThis is a regeneration request with no extra user guidance.\n"
+            "Produce a meaningfully different but still valid outline variation from a typical first draft."
+        )
 
     return (
         f"{syllabus_prompt}\n\n"
         f"User input:\n{user_input}\n\n"
+        f"{guidance}\n"
         "Generate JSON that follows the syllabus instructions only. Return JSON only."
     )
 
@@ -359,16 +374,22 @@ def build_outline_preview(payload, syllabus):
     }
 
 
-def generate_syllabus_outline(payload, client=None, model_name="gemini-2.5-flash"):
+def generate_syllabus_outline(
+    payload,
+    client=None,
+    model_name="gemini-2.5-flash",
+    outline_feedback="",
+    regenerate=False,
+):
     if client is None:
         client = build_client()
 
     response = client.models.generate_content(
         model=model_name,
-        contents=build_syllabus_prompt(payload),
+        contents=build_syllabus_prompt(payload, outline_feedback=outline_feedback, regenerate=regenerate),
         config={
             "system_instruction": "You generate valid JSON syllabus plans only.",
-            "temperature": 0.3,
+            "temperature": 0.6 if regenerate else 0.3,
         },
     )
 

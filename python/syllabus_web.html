@@ -375,6 +375,17 @@
       line-height: 1.6;
     }
 
+    .review-feedback {
+      width: 100%;
+      display: grid;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .review-feedback textarea {
+      min-height: 104px;
+    }
+
     .output-stack {
       display: grid;
       gap: 18px;
@@ -939,11 +950,11 @@
         <p class="eyebrow">LearnAnything Interface</p>
         <h1>Turn course ideas into structured syllabus JSON.</h1>
         <p class="hero-copy">
-          Fill in a few learning constraints, preview the payload that will be sent to the generator, and inspect the final result as both readable course sections and pretty JSON.
+          Set the course topic, duration, level, and pace. Review the generated syllabus first, then refine or continue into full course generation.
         </p>
         <div class="pill-row">
-          <div class="pill">Topic-aware caching still works behind the scenes</div>
-          <div class="pill">Same backend JSON format</div>
+          <div class="pill">Stage-based generation progress</div>
+          <div class="pill">Outline review before full course build</div>
           <div class="pill">Sample presets included</div>
         </div>
       </div>
@@ -951,19 +962,19 @@
         <div class="stat-grid">
           <div class="stat">
             <strong>Input Form</strong>
-            Choose skill, duration, pace, and learner preferences.
+            Choose skill, duration, pace, and learning style.
           </div>
           <div class="stat">
-            <strong>JSON Preview</strong>
-            See the exact payload before generation.
+            <strong>Outline Review</strong>
+            Inspect the weekly syllabus before generating detailed content.
           </div>
           <div class="stat">
             <strong>Readable Output</strong>
             Weeks, goals, and content topics are grouped for scanning.
           </div>
           <div class="stat">
-            <strong>Raw Output</strong>
-            Expand the final JSON whenever you need the full structure.
+            <strong>Learning Coach</strong>
+            Ask follow-up questions after the course is generated.
           </div>
         </div>
       </div>
@@ -1021,12 +1032,6 @@
             </label>
           </div>
 
-          <label>
-            Personal Parameters
-            <textarea id="personal-parameters" name="personal_parameters" placeholder="One preference per line, or comma-separated."></textarea>
-            <span class="hint">Examples: wants step-by-step structure, prefers concept-first explanations, needs real-world examples.</span>
-          </label>
-
           <div class="actions">
             <button class="primary-button" id="generate-button" type="submit">Generate Outline</button>
             <button class="secondary-button" id="clear-button" type="button">Clear Form</button>
@@ -1063,6 +1068,14 @@
           </div>
           <div id="review-actions" class="review-actions">
             <p class="review-note">Review the outline first. If it looks right, continue to generate topics, detailed content, assessments, and images.</p>
+            <label class="review-feedback">
+              Extra Syllabus Guidance
+              <textarea
+                id="outline-feedback"
+                placeholder="Optional: add anything you want changed in the next syllabus draft. If left blank, re-generation will create a different variation automatically."
+              ></textarea>
+              <span class="hint">Use this only when you want the next outline draft to reflect extra needs.</span>
+            </label>
             <button class="primary-button" id="approve-outline-button" type="button">Generate Full Course</button>
             <button class="secondary-button" id="regenerate-outline-button" type="button">Re-generate Outline</button>
           </div>
@@ -1106,6 +1119,7 @@
     const reviewActions = document.getElementById("review-actions");
     const approveOutlineButton = document.getElementById("approve-outline-button");
     const regenerateOutlineButton = document.getElementById("regenerate-outline-button");
+    const outlineFeedback = document.getElementById("outline-feedback");
     const coachPanel = document.getElementById("coach-panel");
     const coachMessages = document.getElementById("coach-messages");
     const coachInput = document.getElementById("coach-input");
@@ -1122,7 +1136,6 @@
       difficulty_level: document.getElementById("difficulty-level"),
       learning_style: document.getElementById("learning-style"),
       hours_per_week: document.getElementById("hours-per-week"),
-      personal_parameters: document.getElementById("personal-parameters"),
     };
 
     function splitPersonalParameters(rawValue) {
@@ -1616,7 +1629,7 @@
       `;
 
       readableOutput.className = "output-stack";
-      readableOutput.innerHTML = summaryCards + pedagogySection + preferencesSection + goalsSection + weeksSection;
+      readableOutput.innerHTML = summaryCards + pedagogySection + (preferences.length ? preferencesSection : "") + goalsSection + weeksSection;
     }
 
     function renderReadableOutput(output) {
@@ -1749,7 +1762,6 @@
       fields.difficulty_level.value = payload.difficulty_level || "2";
       fields.learning_style.value = payload.learning_style || "practical";
       fields.hours_per_week.value = payload.hours_per_week || "";
-      fields.personal_parameters.value = (payload.personal_parameters || []).join("\n");
     }
 
     async function loadSample(sampleName) {
@@ -1772,11 +1784,12 @@
       setStatus(`Loaded sample: ${sampleName}.`);
       resetProgress();
       resultBadge.textContent = "Sample loaded";
+      outlineFeedback.value = "";
     }
 
-    async function generateOutline(event) {
-      if (event) event.preventDefault();
+    async function generateOutline(options = {}) {
       if (generateButton.disabled) return;
+      const isRegeneration = Boolean(options.regenerate);
 
       setStatus("Generating syllabus outline for review...");
       setProgress(10, "active");
@@ -1799,7 +1812,8 @@
           difficulty_level: fields.difficulty_level.value,
           learning_style: fields.learning_style.value,
           hours_per_week: fields.hours_per_week.value,
-          personal_parameters: fields.personal_parameters.value,
+          outline_feedback: isRegeneration ? outlineFeedback.value : "",
+          regenerate_outline: isRegeneration,
         });
         const result = await waitForTask(taskId);
 
@@ -1868,6 +1882,7 @@
       currentCourse = null;
       currentPayload = null;
       currentOutline = null;
+      outlineFeedback.value = "";
       approveOutlineButton.disabled = true;
       regenerateOutlineButton.disabled = true;
       readableOutput.className = "placeholder";
@@ -1879,10 +1894,15 @@
       resetProgress();
     }
 
-    form.addEventListener("submit", generateOutline);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      generateOutline({ regenerate: false });
+    });
     clearButton.addEventListener("click", clearForm);
     approveOutlineButton.addEventListener("click", generateCourseDetails);
-    regenerateOutlineButton.addEventListener("click", generateOutline);
+    regenerateOutlineButton.addEventListener("click", () => {
+      generateOutline({ regenerate: true });
+    });
 
     for (const input of Object.values(fields)) {
       input.addEventListener("input", () => {
