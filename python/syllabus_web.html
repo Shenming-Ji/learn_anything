@@ -537,10 +537,17 @@
       line-height: 1.75;
     }
 
-    .excerpt {
-      margin: 8px 0 0;
-      color: var(--muted);
-      line-height: 1.7;
+    .math-block {
+      margin: 0.9em 0;
+      padding: 14px 18px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(69, 47, 26, 0.08);
+      overflow-x: auto;
+    }
+
+    .math-inline {
+      padding: 0 0.08em;
     }
 
     .lesson-pager {
@@ -598,41 +605,33 @@
       white-space: normal;
     }
 
-    .excerpt p,
     .lesson-text p {
       margin: 0 0 0.9em;
     }
 
-    .excerpt p:last-child,
     .lesson-text p:last-child {
       margin-bottom: 0;
     }
 
-    .excerpt ul,
-    .excerpt ol,
     .lesson-text ul,
     .lesson-text ol {
       margin: 0 0 0.9em;
       padding-left: 1.4em;
     }
 
-    .excerpt li,
     .lesson-text li {
       margin-bottom: 0.35em;
     }
 
-    .excerpt strong,
     .lesson-text strong {
       color: var(--ink);
       font-weight: 800;
     }
 
-    .excerpt em,
     .lesson-text em {
       font-style: italic;
     }
 
-    .excerpt code,
     .lesson-text code {
       padding: 0.1em 0.4em;
       border-radius: 6px;
@@ -790,6 +789,36 @@
 
     .mc-result-correct { color: var(--brand-deep); }
     .mc-result-wrong   { color: var(--warm); }
+
+    .matching-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .matching-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+      gap: 10px;
+      align-items: center;
+    }
+
+    .matching-prompt {
+      color: var(--ink);
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    .matching-select {
+      min-width: 0;
+      padding: 10px 12px;
+    }
+
+    .quiz-action {
+      margin-top: 10px;
+      padding: 8px 14px;
+      font-size: 0.88rem;
+    }
 
     .coach-panel {
       position: fixed;
@@ -1084,6 +1113,22 @@
     </section>
   </div>
 
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [["\\(", "\\)"]],
+        displayMath: [["\\[", "\\]"]],
+      },
+      options: {
+        skipHtmlTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+      },
+    };
+  </script>
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"
+  ></script>
+
   <div id="coach-panel" class="coach-panel" style="display: none;">
     <div class="coach-header">
       <span class="coach-title">Learning Coach</span>
@@ -1229,7 +1274,9 @@
       return String(text)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     }
 
     function renderList(items) {
@@ -1307,6 +1354,11 @@
         .replace(/`(.+?)`/g, "<code>$1</code>");
     }
 
+    function typesetMath(root = document) {
+      if (!window.MathJax || !window.MathJax.typesetPromise) return;
+      window.MathJax.typesetPromise([root]).catch(() => {});
+    }
+
     function renderMarkdownText(text) {
       const escaped = escapeHtml(String(text || "").replace(/\r\n/g, "\n")).trim();
       if (!escaped) return "";
@@ -1316,6 +1368,8 @@
       let paragraphLines = [];
       let listType = null;
       let listItems = [];
+      let mathLines = [];
+      let inMathBlock = false;
 
       function flushParagraph() {
         if (paragraphLines.length === 0) return;
@@ -1331,11 +1385,32 @@
         listItems = [];
       }
 
+      function flushMathBlock() {
+        if (mathLines.length === 0) return;
+        blocks.push(`<div class="math-block">${mathLines.join("<br>")}</div>`);
+        mathLines = [];
+      }
+
       for (const rawLine of lines) {
         const line = rawLine.trim();
         if (!line) {
           flushParagraph();
           flushList();
+          flushMathBlock();
+          inMathBlock = false;
+          continue;
+        }
+
+        const startsMathBlock = line.startsWith("\\[") || line.startsWith("$$");
+        const endsMathBlock = line.endsWith("\\]") || line.endsWith("$$");
+        if (startsMathBlock || inMathBlock) {
+          flushParagraph();
+          flushList();
+          mathLines.push(line);
+          inMathBlock = !endsMathBlock || (startsMathBlock && !endsMathBlock);
+          if (!inMathBlock) {
+            flushMathBlock();
+          }
           continue;
         }
 
@@ -1368,6 +1443,7 @@
 
       flushParagraph();
       flushList();
+      flushMathBlock();
       return blocks.join("");
     }
 
@@ -1388,6 +1464,70 @@
       `;
     }
 
+    function renderTrueFalseChoices(correctAnswer, options = {}) {
+      const gatedAttrs = options.gated
+        ? ` data-gated="true" data-pager-id="${escapeHtml(options.pagerId || "")}" data-page-index="${escapeHtml(options.pageIndex ?? "")}"`
+        : "";
+      const safeCorrect = escapeHtml(String(correctAnswer || "").trim());
+      const choices = ["True", "False"];
+      return `
+        <div class="mc-choices"${gatedAttrs}>
+          ${choices.map((choice) => (
+            `<button class="mc-choice" data-key="${escapeHtml(choice)}" onclick="handleMcAnswer(this,'${safeCorrect}')">${escapeHtml(choice)}</button>`
+          )).join("")}
+          <p class="mc-result"></p>
+        </div>
+      `;
+    }
+
+    function shuffleArray(items) {
+      const copy = [...items];
+      for (let index = copy.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+      }
+      return copy;
+    }
+
+    function renderMatchingQuiz(assessment, options = {}) {
+      const pairs = Array.isArray(assessment.matching_pairs) ? assessment.matching_pairs.filter((pair) => pair && pair.prompt && pair.match) : [];
+      if (pairs.length === 0) {
+        return "<p class=\"card-copy\">Matching data missing.</p>";
+      }
+
+      const optionPoolSource = Array.isArray(assessment.match_options) && assessment.match_options.length > 0
+        ? assessment.match_options
+        : pairs.map((pair) => pair.match);
+      const optionPool = shuffleArray(Array.from(new Set(optionPoolSource.map((item) => String(item).trim()).filter(Boolean))));
+      const gatedAttrs = options.gated
+        ? ` data-gated="true" data-pager-id="${escapeHtml(options.pagerId || "")}" data-page-index="${escapeHtml(options.pageIndex ?? "")}"`
+        : "";
+
+      return `
+        <div class="matching-quiz"${gatedAttrs}>
+          <div class="matching-grid">
+            ${pairs.map((pair, index) => `
+              <div class="matching-row">
+                <label class="matching-prompt" for="matching-${escapeHtml(options.pagerId || "topic")}-${index}">
+                  ${escapeHtml(pair.prompt)}
+                </label>
+                <select
+                  class="matching-select"
+                  id="matching-${escapeHtml(options.pagerId || "topic")}-${index}"
+                  data-correct-match="${escapeHtml(String(pair.match).trim())}"
+                >
+                  <option value="">Choose a match</option>
+                  ${optionPool.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}
+                </select>
+              </div>
+            `).join("")}
+          </div>
+          <button class="secondary-button quiz-action" type="button" onclick="checkMatchingAnswer(this)">Check Matches</button>
+          <p class="mc-result"></p>
+        </div>
+      `;
+    }
+
     function renderAssessments(assessments, options = {}) {
       if (!assessments || assessments.length === 0) {
         return `<p class="card-copy">${escapeHtml(options.emptyMessage || "No assessments generated for this topic.")}</p>`;
@@ -1397,12 +1537,26 @@
         <div class="nested-stack">
           ${assessments.map((assessment, index) => {
             const hasChoices = Array.isArray(assessment.choices) && assessment.choices.length > 0;
-            const label = hasChoices ? "Multiple Choice" : (assessment.assessment_type || "Assessment");
+            const isMatching = assessment.assessment_type === "matching" && Array.isArray(assessment.matching_pairs);
+            const isTrueFalse = assessment.assessment_type === "true_false";
+            const label = isMatching
+              ? "Matching"
+              : isTrueFalse
+                ? "True or False"
+                : hasChoices
+                  ? "Multiple Choice"
+                  : (assessment.assessment_type || "Assessment");
             return `
               <article class="mini-card">
                 <span class="card-label">${escapeHtml(label)} · Q${index + 1}</span>
                 <p class="card-copy" style="margin-bottom:0">${escapeHtml(assessment.assessment_description || "")}</p>
-                ${hasChoices ? renderMcChoices(assessment.choices, assessment.correct_answer, options) : ""}
+                ${isMatching
+                  ? renderMatchingQuiz(assessment, options)
+                  : isTrueFalse
+                    ? renderTrueFalseChoices(assessment.correct_answer, options)
+                    : hasChoices
+                      ? renderMcChoices(assessment.choices, assessment.correct_answer, options)
+                      : ""}
                 ${renderFocusPills(assessment.assessment_focus || [])}
               </article>
             `;
@@ -1414,6 +1568,10 @@
     function countLessonQuizzes(subContents) {
       if (!Array.isArray(subContents)) return 0;
       return subContents.filter((item) => item && item.page_assessment).length;
+    }
+
+    function stripTopicIndex(text) {
+      return String(text || "").replace(/^\d+(?:\.\d+)*\s+/, "").trim();
     }
 
     function buildLessonLabel(topicTitle, index) {
@@ -1455,15 +1613,16 @@
             </div>
           </div>
           <div class="nested-stack">
-          ${subContents.map((item, index) => `
+          ${subContents.map((item, index) => {
+            const lessonTitle = stripTopicIndex(item.content_title || "Untitled lesson");
+            return `
             <article
               class="mini-card lesson-page ${index === 0 ? "is-active" : ""}"
               data-lesson-page="${index}"
               data-page-completed="${item.page_assessment ? "false" : "true"}"
             >
               <span class="card-label">Lesson ${escapeHtml(buildLessonLabel(topicTitle, index))}</span>
-              <h5 class="card-title">${escapeHtml(item.content_title || "Untitled lesson")}</h5>
-              <div class="excerpt">${renderMarkdownText(summarizeText(item.content_text || "", item.content_title || ""))}</div>
+              <h5 class="card-title">${escapeHtml(lessonTitle)}</h5>
               <div class="lesson-text">${renderMarkdownText(item.content_text || "")}</div>
               <div class="lesson-quiz">
                 <div class="section-header">
@@ -1481,7 +1640,8 @@
                 )}
               </div>
             </article>
-          `).join("")}
+          `;
+          }).join("")}
           </div>
         </div>
       `;
@@ -1639,6 +1799,7 @@
 
       readableOutput.className = "output-stack";
       readableOutput.innerHTML = summaryCards + pedagogySection + (preferences.length ? preferencesSection : "") + goalsSection + weeksSection;
+      typesetMath(readableOutput);
     }
 
     function renderReadableOutput(output) {
@@ -1747,6 +1908,7 @@
 
       readableOutput.className = "output-stack";
       readableOutput.innerHTML = summaryCards + goalsSection + weeksSection + contentSection;
+      typesetMath(readableOutput);
     }
 
     function setReviewActionsVisible(visible) {
@@ -1990,6 +2152,60 @@
           ? "✅ Correct!"
           : "❌ Incorrect — correct answer highlighted in green";
         resultEl.className = `mc-result ${isCorrect ? "mc-result-correct" : "mc-result-wrong"}`;
+      }
+    }
+
+    function checkMatchingAnswer(button) {
+      const container = button.closest(".matching-quiz");
+      if (!container) return;
+
+      const selects = Array.from(container.querySelectorAll(".matching-select"));
+      const resultEl = container.querySelector(".mc-result");
+      const isGated = container.dataset.gated === "true";
+
+      const allSelected = selects.every((select) => select.value);
+      if (!allSelected) {
+        if (resultEl) {
+          resultEl.textContent = "Complete every match before checking.";
+          resultEl.className = "mc-result mc-result-wrong";
+        }
+        return;
+      }
+
+      const isCorrect = selects.every((select) => select.value === (select.dataset.correctMatch || ""));
+      if (isCorrect) {
+        selects.forEach((select) => {
+          select.disabled = true;
+        });
+        button.disabled = true;
+
+        if (isGated) {
+          const pagerId = container.dataset.pagerId;
+          const pageIndex = Number(container.dataset.pageIndex || "-1");
+          const pager = pagerId ? document.getElementById(pagerId) : null;
+          const page = pager ? pager.querySelector(`[data-lesson-page="${pageIndex}"]`) : null;
+          if (page) {
+            page.dataset.pageCompleted = "true";
+          }
+          if (pagerId) {
+            setLessonPage(pagerId, pageIndex);
+          }
+        }
+
+        if (resultEl) {
+          resultEl.textContent = isGated
+            ? "✅ Correct! You can continue to the next lesson."
+            : "✅ Correct!";
+          resultEl.className = "mc-result mc-result-correct";
+        }
+        return;
+      }
+
+      if (resultEl) {
+        resultEl.textContent = isGated
+          ? "❌ Some matches are off. Try again to unlock the next lesson."
+          : "❌ Some matches are off. Try again.";
+        resultEl.className = "mc-result mc-result-wrong";
       }
     }
 

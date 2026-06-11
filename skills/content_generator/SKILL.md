@@ -54,6 +54,31 @@ Use this exact `content` structure:
 ],
 "correct_answer": "<A, B, C, or D>",
 "assessment_focus": []
+},
+{
+"assessment_type": "true_false",
+"assessment_description": "<statement to judge>",
+"choices": [
+"True",
+"False"
+],
+"correct_answer": "<True or False>",
+"assessment_focus": []
+},
+{
+"assessment_type": "matching",
+"assessment_description": "<matching prompt>",
+"matching_pairs": [
+{
+"prompt": "<left-side item>",
+"match": "<correct right-side item>"
+}
+],
+"match_options": [
+"<right-side option 1>",
+"<right-side option 2>"
+],
+"assessment_focus": []
 }
 ]
 }
@@ -80,14 +105,15 @@ Use this exact `content` structure:
 
 1. Each topic must have at least one assessment.
 2. `assessment_count` must match the actual number of objects in `assessments`.
-3. All assessments must be multiple-choice single-answer questions. Set `assessment_type` to `"multiple_choice"`.
-4. Each assessment must include exactly four choices labeled `"A. ..."`, `"B. ..."`, `"C. ..."`, `"D. ..."`.
-5. `correct_answer` must be exactly one of `"A"`, `"B"`, `"C"`, or `"D"`, and must correspond to the correct choice in `choices`.
-6. Distribute correct answers across A, B, C, D — do not put every correct answer on the same letter.
-7. Assessments must be based only on the generated topic content.
-8. Each assessment should evaluate understanding, application, or synthesis of the material covered in that topic.
-9. `assessment_focus` must be an array of concise concepts or skills assessed within that topic.
-10. Do not create assessments for knowledge that was not introduced in the generated content.
+3. Use a mix of supported quiz types when it improves learning variety. Supported `assessment_type` values are `"multiple_choice"`, `"true_false"`, and `"matching"`.
+4. For `"multiple_choice"`, include exactly four choices labeled `"A. ..."`, `"B. ..."`, `"C. ..."`, `"D. ..."`.
+5. For `"multiple_choice"`, `correct_answer` must be exactly one of `"A"`, `"B"`, `"C"`, or `"D"`, and must correspond to the correct choice in `choices`.
+6. For `"true_false"`, include `choices` as `["True", "False"]` and set `correct_answer` to either `"True"` or `"False"`.
+7. For `"matching"`, include `matching_pairs` with at least three prompt-match pairs. Also include `match_options` containing the right-side options needed to solve the match.
+8. Assessments must be based only on the generated topic content.
+9. Each assessment should evaluate understanding, application, or synthesis of the material covered in that topic.
+10. `assessment_focus` must be an array of concise concepts or skills assessed within that topic.
+11. Do not create assessments for knowledge that was not introduced in the generated content.
 
 # Quality Checks
 
@@ -101,6 +127,8 @@ Before returning the response, verify all of the following:
 6. No `sub_contents` field is included anywhere in the content output.
 7. Every assessment is supported by generated content only.
 8. The topic list stays tightly aligned to the original learning goal or syllabus input.
-9. Every assessment has `assessment_type` set to `"multiple_choice"`.
-10. Every assessment has exactly four `choices` strings labeled A through D.
-11. Every `correct_answer` is one of `"A"`, `"B"`, `"C"`, `"D"` and matches the correct choice.
+9. Every assessment has a supported `assessment_type`.
+10. Every `"multiple_choice"` assessment has exactly four `choices` strings labeled A through D.
+11. Every `"multiple_choice"` `correct_answer` is one of `"A"`, `"B"`, `"C"`, `"D"` and matches the correct choice.
+12. Every `"true_false"` assessment uses `choices` of `["True", "False"]`.
+13. Every `"matching"` assessment includes valid `matching_pairs` and `match_options`.

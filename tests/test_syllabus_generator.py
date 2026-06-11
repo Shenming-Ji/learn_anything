@@ -96,6 +96,23 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(chunk["content_title"], "Optical Basics")
         self.assertEqual(chunk["content_text"], "A short explanation.")
 
+    def test_normalize_content_output_accepts_contents_alias(self):
+        output = syllabus_service.normalize_content_output(
+            {
+                "topic_title": "1.1 Fundamentals of Optics",
+                "contents": [
+                    {
+                        "title": "Optical Basics",
+                        "text": "A short explanation.",
+                    }
+                ]
+            }
+        )
+
+        chunk = output["sub_contents"][0]
+        self.assertEqual(chunk["content_title"], "Optical Basics")
+        self.assertEqual(chunk["content_text"], "A short explanation.")
+
     def test_load_system_prompt_reads_prompt_file(self):
         prompt = syllabus_service.load_system_prompt()
 
@@ -108,6 +125,13 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertTrue(skill_text.strip())
         self.assertIn('"skill_name"', skill_text)
         self.assertIn("Do not include `sub_contents`", skill_text)
+
+    def test_sub_content_skill_includes_formula_format_guidance(self):
+        skill_text = syllabus_service.load_sub_content_generation_skill()
+
+        self.assertIn("\\(...\\)", skill_text)
+        self.assertIn("\\[...\\]", skill_text)
+        self.assertIn("Do not wrap formulas in code fences", skill_text)
 
     def test_build_syllabus_prompt_includes_prompt_and_payload(self):
         payload = {
@@ -445,8 +469,10 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertEqual(call_state["count"], 2)
         self.assertEqual(output["topic_title"], "1.1 Linear Regression")
         self.assertEqual(len(output["sub_contents"]), 4)
-        self.assertIn("Foundations", output["sub_contents"][0]["content_title"])
+        self.assertTrue(output["sub_contents"][0]["content_title"])
         self.assertTrue(output["sub_contents"][0]["content_text"])
+        self.assertNotIn("1.1", output["sub_contents"][0]["content_title"])
+        self.assertNotIn("1.1", output["sub_contents"][0]["content_text"].split(". ")[0])
 
     def test_attach_page_assessments_assigns_relevant_question_to_each_page(self):
         topic = {
@@ -518,6 +544,10 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn("function buildLessonLabel", html)
         self.assertIn("function summarizeText", html)
         self.assertIn("function renderMarkdownText", html)
+        self.assertIn("typesetMath", html)
+        self.assertIn("MathJax", html)
+        self.assertIn("tex-svg.js", html)
+        self.assertIn("math-block", html)
         self.assertIn("Lesson Details", html)
         self.assertIn("Lessons", html)
         self.assertIn("Lesson ${escapeHtml(buildLessonLabel", html)
@@ -1291,22 +1321,25 @@ class CoachTests(unittest.TestCase):
         self.assertNotIn("Final JSON", html)
 
 
-class MultipleChoiceTests(unittest.TestCase):
+class QuizRenderingTests(unittest.TestCase):
     def _html(self):
         return (Path(__file__).resolve().parents[1] / "python" / "syllabus_web.html").read_text(encoding="utf-8")
 
-    def test_content_generator_skill_requires_mc_format(self):
+    def test_content_generator_skill_supports_multiple_quiz_formats(self):
         skill_text = (Path(__file__).resolve().parents[1] / "skills" / "content_generator" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("multiple_choice", skill_text)
+        self.assertIn("true_false", skill_text)
+        self.assertIn("matching", skill_text)
         self.assertIn('"choices"', skill_text)
         self.assertIn('"correct_answer"', skill_text)
-        self.assertIn("A.", skill_text)
-        self.assertIn("B.", skill_text)
+        self.assertIn('"matching_pairs"', skill_text)
+        self.assertIn('"match_options"', skill_text)
 
-    def test_content_generator_skill_quality_checks_include_mc(self):
+    def test_content_generator_skill_quality_checks_include_matching(self):
         skill_text = (Path(__file__).resolve().parents[1] / "skills" / "content_generator" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("correct_answer", skill_text)
-        self.assertIn("four", skill_text.lower())
+        self.assertIn("matching", skill_text.lower())
+        self.assertIn("true_false", skill_text)
 
     def test_html_renders_mc_choices_when_present(self):
         html = self._html()
@@ -1315,6 +1348,13 @@ class MultipleChoiceTests(unittest.TestCase):
         self.assertIn("mc-correct", html)
         self.assertIn("mc-wrong", html)
 
+    def test_html_renders_matching_quiz_when_present(self):
+        html = self._html()
+        self.assertIn("renderMatchingQuiz", html)
+        self.assertIn("checkMatchingAnswer", html)
+        self.assertIn("matching-grid", html)
+        self.assertIn("matching-select", html)
+
     def test_html_uses_lesson_and_quiz_labels(self):
         html = self._html()
         self.assertIn("Lesson Details", html)
@@ -1322,14 +1362,17 @@ class MultipleChoiceTests(unittest.TestCase):
         self.assertIn("Quizzes", html)
         self.assertIn("<h3>Quiz</h3>", html)
 
-    def test_html_has_handle_mc_answer_function(self):
+    def test_html_has_interactive_quiz_handlers(self):
         html = self._html()
         self.assertIn("handleMcAnswer", html)
+        self.assertIn("checkMatchingAnswer", html)
         self.assertIn("dataset.answered", html)
 
     def test_html_backward_compat_check_for_choices(self):
         html = self._html()
         self.assertIn("Array.isArray(assessment.choices)", html)
+        self.assertIn('assessment.assessment_type === "matching"', html)
+        self.assertIn('assessment.assessment_type === "true_false"', html)
 
     def test_assessment_details_is_collapsible(self):
         html = self._html()

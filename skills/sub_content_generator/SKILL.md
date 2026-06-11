@@ -53,6 +53,9 @@ Use this exact structure:
 8. Avoid unrelated enrichment topics.
 9. Do not include quiz questions or assessments in `sub_contents`.
 10. Do not include citations or external links at this stage.
+11. If a formula is needed, write it in LaTeX notation using `\(...\)` for inline math and `\[...\]` for display math.
+12. Do not wrap formulas in code fences, backticks, markdown tables, or pseudo-ASCII art.
+13. Keep formulas embedded naturally within the explanatory text so they read like part of the lesson, not a detached markdown artifact.
 
 # Quality Checks
 

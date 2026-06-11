@@ -103,6 +103,8 @@ def build_sub_content_prompt(topic, course_context, skill_path=SUB_CONTENT_SKILL
         f"{skill_instruction}\n\n"
         f"Input:\n{json.dumps(sub_content_input, indent=2, ensure_ascii=False)}\n\n"
         "Generate JSON that follows the sub_content_generator SKILL.md instructions. "
+        "The top-level object must include `topic_title` and a non-empty `sub_contents` array. "
+        "Each item in `sub_contents` must include `content_title` and `content_text`. "
         "Return JSON only."
     )
 
@@ -157,6 +159,27 @@ def normalize_content_output(output, topic=None):
             normalized_output["topic_title"] = fallback_title.strip()
 
     raw_sub_contents = normalized_output.get("sub_contents")
+    if not isinstance(raw_sub_contents, list) or not raw_sub_contents:
+        for fallback_key in ("contents", "lessons", "sub_content", "subContent"):
+            fallback_value = normalized_output.get(fallback_key)
+            if isinstance(fallback_value, list) and fallback_value:
+                raw_sub_contents = fallback_value
+                normalized_output["sub_contents"] = fallback_value
+                break
+
+    if (
+        (not isinstance(raw_sub_contents, list) or not raw_sub_contents)
+        and isinstance(normalized_output.get("content_title"), str)
+        and isinstance(normalized_output.get("content_text"), str)
+    ):
+        raw_sub_contents = [
+            {
+                "content_title": normalized_output.get("content_title"),
+                "content_text": normalized_output.get("content_text"),
+            }
+        ]
+        normalized_output["sub_contents"] = raw_sub_contents
+
     if isinstance(raw_sub_contents, list):
         normalized_sub_contents = []
         for chunk in raw_sub_contents:
@@ -279,8 +302,13 @@ def call_sub_content_generation_llm(topic, course_context, client, model_name, s
     return parse_model_response(response.text)
 
 
+def strip_topic_index(text):
+    return re.sub(r"^\d+(?:\.\d+)*\s+", "", str(text or "")).strip()
+
+
 def build_fallback_sub_content_output(topic, course_context):
     topic_title = str(topic.get("topic_title") or "Untitled topic").strip()
+    display_title = strip_topic_index(topic_title) or topic_title
     topic_description = str(topic.get("topic_description") or "").strip()
     learning_style = str(course_context.get("learning_style") or "practical").strip().lower()
     hours_per_week = course_context.get("hours_per_week")
@@ -305,12 +333,17 @@ def build_fallback_sub_content_output(topic, course_context):
         if learning_style == "practical"
         else "Emphasize core definitions, conceptual structure, and the reasoning behind each idea."
     )
+    intro_title = (
+        display_title
+        if re.search(r"\b(foundations?|fundamentals?)\b", display_title, flags=re.IGNORECASE)
+        else f"{display_title} Foundations"
+    )
 
     sub_contents = [
         {
-            "content_title": f"{topic_title} Foundations",
+            "content_title": intro_title,
             "content_text": (
-                f"{topic_title} starts with the core idea of the topic and why it matters inside the course. "
+                f"This lesson introduces the central idea behind {display_title} and why it matters in the course. "
                 f"{topic_description or 'This section introduces the essential background, vocabulary, and scope learners need before moving deeper.'} "
                 f"The goal is to help the learner build a clear mental model of the topic{study_time_text} so later examples feel connected rather than isolated. "
                 f"This lesson should explain the basic terms, the problem this topic helps solve, and how it supports {goals_text}. "
@@ -318,25 +351,25 @@ def build_fallback_sub_content_output(topic, course_context):
             ),
         },
         {
-            "content_title": f"How {topic_title} Works",
+            "content_title": f"How {display_title} Works",
             "content_text": (
-                f"This lesson breaks {topic_title} into its main components, relationships, and decision points. "
+                f"This lesson breaks {display_title} into its main components, relationships, and decision points. "
                 f"It should explain the process in a structured way: what inputs matter, what choices are made, and what outputs or consequences follow. "
                 f"Learners should come away understanding not only the surface description of the topic, but also the internal logic that makes it work in practice. "
                 f"When useful, connect the explanation back to {topic_description or 'the main topic description'} so the instruction stays grounded and relevant."
             ),
         },
         {
-            "content_title": f"Applying {topic_title}",
+            "content_title": f"Applying {display_title}",
             "content_text": (
-                f"This lesson focuses on application. Show how {topic_title} appears in a realistic learning or work scenario and walk through how someone would reason through it carefully. "
+                f"This lesson focuses on application. Show how {display_title} appears in a realistic learning or work scenario and walk through how someone would reason through it carefully. "
                 f"The explanation should highlight tradeoffs, common judgment calls, and how a learner can tell whether they are applying the idea correctly. "
                 f"{'Give especially concrete examples and practical interpretation steps. ' if learning_style == 'practical' else 'Keep the reasoning explicit and concept-first. '}"
                 f"If assessments are targeting specific areas, connect the lesson to {focus_text or 'the most important concepts in the topic'}."
             ),
         },
         {
-            "content_title": f"Common Pitfalls in {topic_title}",
+            "content_title": f"Common Pitfalls in {display_title}",
             "content_text": (
                 f"This lesson closes the topic by surfacing mistakes, misconceptions, and weak reasoning patterns learners should avoid. "
                 f"Explain what beginners often misunderstand, why those misunderstandings happen, and what checks they can use to self-correct. "

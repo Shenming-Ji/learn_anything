@@ -150,7 +150,7 @@ def _run_details_task(task_id, payload, syllabus):
             task_id,
             state="running",
             progress=75,
-            message="Generating sub contents...",
+            message="Generating contents...",
         )
         output = add_sub_contents(output, client=client)
         _update_task(
