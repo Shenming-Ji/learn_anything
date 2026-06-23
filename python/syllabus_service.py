@@ -4,6 +4,9 @@ import re
 import sys
 from copy import deepcopy
 from pathlib import Path
+from google import genai
+from google.genai import types
+from google.genai.types import GenerateContentConfig, HttpOptions
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -14,6 +17,8 @@ SKILL_PATH = BASE_DIR / "skills" / "content_generator" / "SKILL.md"
 SUB_CONTENT_SKILL_PATH = BASE_DIR / "skills" / "sub_content_generator" / "SKILL.md"
 CONTENT_GENERATION_SKILL_NAME = "content_generation"
 MIN_SUB_CONTENTS_PER_TOPIC = 4
+TEMPERATURE = 0.1
+MAX_TOKENS = 8192
 
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
@@ -112,8 +117,6 @@ def build_sub_content_prompt(topic, course_context, skill_path=SUB_CONTENT_SKILL
 
 
 def build_client():
-    from google import genai
-
     return genai.Client(
         vertexai=True,
         project="mcc-ece-gemini",
