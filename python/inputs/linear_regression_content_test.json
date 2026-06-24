@@ -1,0 +1,11 @@
+{
+  "target_skill": "Linear regression for beginners",
+  "duration_weeks": 4,
+  "difficulty_level": 2,
+  "learning_style": "practical",
+  "hours_per_week": 5,
+  "personal_parameters": [
+    "Prefers intuitive explanations before formal notation",
+    "Wants examples grounded in simple real-world datasets"
+  ]
+}

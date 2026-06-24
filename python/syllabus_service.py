@@ -3,18 +3,24 @@ import os
 import re
 import sys
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
-from google import genai
-from google.genai import types
-from google.genai.types import GenerateContentConfig, HttpOptions
+
+try:
+    from google import genai
+except ModuleNotFoundError:  # pragma: no cover - handled at runtime when client creation is needed
+    genai = None
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_GOOGLE_CREDENTIALS = Path(__file__).resolve().parents[1] / "google-api-key.json"
 DEFAULT_INPUT_PATH = Path(__file__).with_name("inputs") / "space.json"
+DEFAULT_CONTENT_TEST_INPUT_PATH = Path(__file__).with_name("inputs") / "linear_regression_content_test.json"
 PROMPT_PATH = Path(__file__).with_name("syllabus_prompt.txt")
+CONTENT_TEST_PROMPT_PATH = Path(__file__).with_name("content_test_prompt.txt")
 SKILL_PATH = BASE_DIR / "skills" / "content_generator" / "SKILL.md"
 SUB_CONTENT_SKILL_PATH = BASE_DIR / "skills" / "sub_content_generator" / "SKILL.md"
+CONTENT_TEST_OUTPUT_DIR = BASE_DIR / "content_test_outputs"
 CONTENT_GENERATION_SKILL_NAME = "content_generation"
 MIN_SUB_CONTENTS_PER_TOPIC = 4
 TEMPERATURE = 0.1
@@ -29,12 +35,26 @@ if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and DEFAULT_GOOGLE_CREDENT
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(DEFAULT_GOOGLE_CREDENTIALS)
 
 
+class ContentTestStageError(Exception):
+    def __init__(self, stage_name, raw_model_output, error, input_payload):
+        super().__init__(str(error))
+        self.stage_name = stage_name
+        self.raw_model_output = raw_model_output
+        self.input_payload = input_payload
+        self.original_error = error
+
+
 def load_payload(input_path):
     with open(input_path, "r", encoding="utf-8") as file:
         return json.load(file)
 
 
 def load_system_prompt(prompt_path=PROMPT_PATH):
+    with open(prompt_path, "r", encoding="utf-8") as file:
+        return file.read()
+
+
+def load_content_test_prompt(prompt_path=CONTENT_TEST_PROMPT_PATH):
     with open(prompt_path, "r", encoding="utf-8") as file:
         return file.read()
 
@@ -79,6 +99,33 @@ def build_syllabus_prompt(payload, outline_feedback="", regenerate=False, prompt
 
 def build_content_prompt(payload, syllabus, skill_path=SKILL_PATH):
     skill_instruction = load_content_generation_skill(skill_path)
+    content_input = build_content_generation_input(payload, syllabus)
+
+    return (
+        f"{skill_instruction}\n\n"
+        f"Input:\n{json.dumps(content_input, indent=2, ensure_ascii=False)}\n\n"
+        "Generate only the content object that follows the content_generator SKILL.md instructions. "
+        "Align the topics and assessments with the provided syllabus_context. "
+        "Each topic_description should preview the most useful instructional elements for that topic, "
+        "such as formulas, worked examples, graph interpretation, tables, code examples, media guidance, "
+        "or source recommendations, but do not add any new schema fields. Return JSON only."
+    )
+
+
+def build_content_generation_input(payload, syllabus):
+    return {
+        "request": payload,
+        "syllabus_context": {
+            "topic": syllabus.get("topic"),
+            "pedagogical_style": syllabus.get("pedagogical_style"),
+            "goals": syllabus.get("goals", []),
+            "syllabus": syllabus.get("syllabus", []),
+        },
+    }
+
+
+def build_content_test_prompt(payload, syllabus, prompt_path=CONTENT_TEST_PROMPT_PATH):
+    prompt = load_content_test_prompt(prompt_path)
     content_input = {
         "request": payload,
         "syllabus_context": {
@@ -90,10 +137,10 @@ def build_content_prompt(payload, syllabus, skill_path=SKILL_PATH):
     }
 
     return (
-        f"{skill_instruction}\n\n"
+        f"{prompt}\n\n"
         f"Input:\n{json.dumps(content_input, indent=2, ensure_ascii=False)}\n\n"
-        "Generate only the content object that follows the content_generator SKILL.md instructions. "
-        "Align the topics and assessments with the provided syllabus_context. Return JSON only."
+        "Analyze the syllabus/topic to determine which content types are necessary, then return "
+        "the final structured JSON only. No markdown. No prose outside JSON."
     )
 
 
@@ -112,11 +159,19 @@ def build_sub_content_prompt(topic, course_context, skill_path=SUB_CONTENT_SKILL
         "The top-level object must include `topic_title` and a non-empty `sub_contents` array. "
         f"Generate at least {MIN_SUB_CONTENTS_PER_TOPIC} distinct `sub_contents` items. Do not collapse the topic into a single lesson. "
         "Each item in `sub_contents` must include `content_title` and `content_text`. "
+        "For each content, decide whether formulas, worked examples, graph descriptions, tables, code examples, "
+        "media or image guidance, or source recommendations are needed, and include them naturally inside `content_text` only when helpful. "
+        "Keep the content specific to the topic and avoid repeating the same generic introduction across lessons. "
+        "Because the output must be valid JSON, escape backslashes correctly inside JSON strings when writing LaTeX or similar notation. "
         "Return JSON only."
     )
 
 
 def build_client():
+    if genai is None:
+        raise ModuleNotFoundError(
+            "google.genai is required to generate content. Install the Google GenAI SDK to run this pipeline."
+        )
     return genai.Client(
         vertexai=True,
         project="mcc-ece-gemini",
@@ -139,6 +194,13 @@ def parse_model_response(text):
     except json.JSONDecodeError:
         pass
 
+    repaired_text = _escape_invalid_json_backslashes(text)
+    if repaired_text != text:
+        try:
+            return decoder.raw_decode(repaired_text)[0]
+        except json.JSONDecodeError:
+            pass
+
     for index, char in enumerate(text):
         if char not in "[{":
             continue
@@ -148,7 +210,340 @@ def parse_model_response(text):
         except json.JSONDecodeError:
             continue
 
+        repaired_slice = _escape_invalid_json_backslashes(text[index:])
+        if repaired_slice != text[index:]:
+            try:
+                return decoder.raw_decode(repaired_slice)[0]
+            except json.JSONDecodeError:
+                continue
+
     raise json.JSONDecodeError("No valid JSON object found in model response", text, 0)
+
+
+def _escape_invalid_json_backslashes(text):
+    valid_escapes = {'"', "\\", "/", "b", "f", "n", "r", "t", "u"}
+    result = []
+    in_string = False
+    index = 0
+
+    while index < len(text):
+        char = text[index]
+
+        if not in_string:
+            result.append(char)
+            if char == '"':
+                in_string = True
+            index += 1
+            continue
+
+        if char == '"':
+            result.append(char)
+            in_string = False
+            index += 1
+            continue
+
+        if char != "\\":
+            result.append(char)
+            index += 1
+            continue
+
+        next_index = index + 1
+        if next_index >= len(text):
+            result.append("\\\\")
+            index += 1
+            continue
+
+        next_char = text[next_index]
+        if next_char in valid_escapes:
+            result.append(char)
+            result.append(next_char)
+        else:
+            result.append("\\\\")
+            result.append(next_char)
+        index += 2
+
+    return "".join(result)
+
+
+def _coerce_string_list(value):
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _coerce_object_list(value):
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _coerce_needed_flag(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "needed", "required"}:
+            return True
+        if lowered in {"false", "no", "not needed", "optional"}:
+            return False
+    return bool(value)
+
+
+def _normalize_needed_block(value):
+    if isinstance(value, list):
+        return {
+            "needed": bool(value),
+            "reason": "",
+            "items": [item for item in value if isinstance(item, dict)],
+        }
+
+    if not isinstance(value, dict):
+        return {"needed": False, "reason": "", "items": []}
+
+    normalized = dict(value)
+    items = normalized.get("items")
+    if not isinstance(items, list):
+        items = []
+
+    normalized["needed"] = _coerce_needed_flag(normalized.get("needed"))
+    normalized["reason"] = str(normalized.get("reason", "") or "").strip()
+    normalized["items"] = [item for item in items if isinstance(item, dict)]
+    return normalized
+
+
+def normalize_content_test_output(output, payload=None, syllabus=None):
+    if not isinstance(output, dict):
+        return output
+
+    normalized = dict(output)
+    fallback_topic = ""
+    if isinstance(syllabus, dict):
+        fallback_topic = str(syllabus.get("topic", "") or "").strip()
+    if not fallback_topic and isinstance(payload, dict):
+        fallback_topic = str(payload.get("target_skill", "") or "").strip()
+
+    topic = str(normalized.get("topic", "") or "").strip() or fallback_topic
+    normalized["topic"] = topic
+    normalized["learning_objectives"] = _coerce_string_list(normalized.get("learning_objectives"))
+    normalized["key_concepts"] = _coerce_string_list(normalized.get("key_concepts"))
+    normalized["formulas"] = _normalize_needed_block(normalized.get("formulas"))
+    normalized["examples"] = _coerce_object_list(normalized.get("examples"))
+    normalized["graphs_or_visuals_needed"] = _normalize_needed_block(normalized.get("graphs_or_visuals_needed"))
+    normalized["tables_needed"] = _normalize_needed_block(normalized.get("tables_needed"))
+    normalized["code_examples_needed"] = _normalize_needed_block(normalized.get("code_examples_needed"))
+    normalized["media_or_images_needed"] = _normalize_needed_block(normalized.get("media_or_images_needed"))
+    normalized["citations_needed"] = _normalize_needed_block(normalized.get("citations_needed"))
+    normalized["generated_sections"] = _coerce_object_list(normalized.get("generated_sections"))
+    normalized["quizzes_or_checkpoints"] = _coerce_object_list(normalized.get("quizzes_or_checkpoints"))
+    normalized["assumptions_or_missing_info"] = _coerce_string_list(normalized.get("assumptions_or_missing_info"))
+    return normalized
+
+
+def validate_generated_content_plan(output, require_sub_contents=False):
+    if not isinstance(output, dict):
+        raise ValueError("Generated content plan must be a JSON object.")
+
+    for field_name in ("skill_name", "description", "difficulty_level", "target_audience"):
+        value = output.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Generated content plan is missing {field_name}.")
+
+    topics = output.get("topics")
+    if not isinstance(topics, list) or not topics:
+        raise ValueError("Generated content plan must include a non-empty topics list.")
+
+    for index, topic in enumerate(topics, start=1):
+        if not isinstance(topic, dict):
+            raise ValueError(f"Topic {index} must be a JSON object.")
+
+        topic_title = topic.get("topic_title")
+        topic_description = topic.get("topic_description")
+        estimated_hours = topic.get("estimated_hours")
+        assessment_count = topic.get("assessment_count")
+        assessments = topic.get("assessments")
+
+        if not isinstance(topic_title, str) or not topic_title.strip():
+            raise ValueError(f"Topic {index} is missing topic_title.")
+        if not isinstance(topic_description, str) or not topic_description.strip():
+            raise ValueError(f"Topic {index} is missing topic_description.")
+        if not isinstance(estimated_hours, (int, float)) or estimated_hours <= 0:
+            raise ValueError(f"Topic {index} must include a positive estimated_hours value.")
+        if not isinstance(assessments, list) or not assessments:
+            raise ValueError(f"Topic {index} must include a non-empty assessments list.")
+        if not isinstance(assessment_count, int):
+            raise ValueError(f"Topic {index} is missing assessment_count.")
+        if assessment_count != len(assessments):
+            raise ValueError(f"Topic {index} assessment_count does not match assessments length.")
+        if require_sub_contents:
+            validate_content_output(
+                {
+                    "topic_title": topic_title,
+                    "sub_contents": topic.get("sub_contents"),
+                }
+            )
+        elif "sub_contents" in topic:
+            raise ValueError("Content generator output must not include sub_contents.")
+
+
+def validate_content_test_output(output):
+    if not isinstance(output, dict):
+        raise ValueError("Content test output must be a JSON object.")
+
+    content = output.get("content")
+    if not isinstance(content, dict):
+        raise ValueError("Content test output must include a content object.")
+
+    validate_generated_content_plan(content, require_sub_contents=True)
+
+
+def summarize_content_test_output(output):
+    content = output.get("content", {}) if isinstance(output, dict) else {}
+    topics = content.get("topics", []) if isinstance(content, dict) else []
+
+    topic_count = len(topics) if isinstance(topics, list) else 0
+    total_sub_contents = 0
+    every_sub_content_has_page_assessment = True
+    min_word_count = None
+    assessment_count_matches = True
+
+    if isinstance(topics, list):
+        for topic in topics:
+            if not isinstance(topic, dict):
+                every_sub_content_has_page_assessment = False
+                assessment_count_matches = False
+                continue
+
+            assessments = topic.get("assessments")
+            declared_count = topic.get("assessment_count")
+            if not isinstance(assessments, list) or not isinstance(declared_count, int) or declared_count != len(assessments):
+                assessment_count_matches = False
+
+            sub_contents = topic.get("sub_contents")
+            if not isinstance(sub_contents, list):
+                every_sub_content_has_page_assessment = False
+                continue
+
+            total_sub_contents += len(sub_contents)
+            for sub_content in sub_contents:
+                if not isinstance(sub_content, dict):
+                    every_sub_content_has_page_assessment = False
+                    continue
+
+                if not isinstance(sub_content.get("page_assessment"), dict):
+                    every_sub_content_has_page_assessment = False
+
+                word_count = len(str(sub_content.get("content_text", "") or "").split())
+                if min_word_count is None or word_count < min_word_count:
+                    min_word_count = word_count
+
+    if min_word_count is None:
+        min_word_count = 0
+
+    return {
+        "topic_count": topic_count,
+        "total_sub_contents": total_sub_contents,
+        "every_sub_content_has_page_assessment": every_sub_content_has_page_assessment,
+        "minimum_content_text_word_count": min_word_count,
+        "assessment_count_matches": assessment_count_matches,
+    }
+
+
+def _slugify_filename_part(value):
+    cleaned = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+    return cleaned or "content_test"
+
+
+def _content_test_timestamp():
+    return datetime.now().strftime("%Y-%m-%d_%H%M")
+
+
+def _ensure_output_dir(output_dir=CONTENT_TEST_OUTPUT_DIR):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def _build_content_test_file_path(topic_slug, suffix="", output_dir=CONTENT_TEST_OUTPUT_DIR):
+    output_dir = _ensure_output_dir(output_dir)
+    timestamp = _content_test_timestamp()
+    base_name = f"{topic_slug}_{timestamp}{suffix}"
+    path = output_dir / f"{base_name}.json"
+    counter = 2
+
+    while path.exists():
+        path = output_dir / f"{base_name}_{counter}.json"
+        counter += 1
+
+    return path
+
+
+def _content_test_slug_source(output=None, payload=None, input_payload=None):
+    candidates = []
+
+    if isinstance(input_payload, dict):
+        candidates.extend(
+            [
+                input_payload.get("topic_title"),
+                input_payload.get("topic"),
+                input_payload.get("target_skill"),
+            ]
+        )
+        request = input_payload.get("request")
+        if isinstance(request, dict):
+            candidates.append(request.get("target_skill"))
+        course_context = input_payload.get("course_context")
+        if isinstance(course_context, dict):
+            candidates.append(course_context.get("topic"))
+
+    if isinstance(payload, dict):
+        candidates.append(payload.get("target_skill"))
+
+    if isinstance(output, dict):
+        candidates.append(output.get("topic"))
+        content = output.get("content")
+        if isinstance(content, dict):
+            topics = content.get("topics")
+            if isinstance(topics, list) and topics:
+                first_topic = topics[0]
+                if isinstance(first_topic, dict):
+                    candidates.append(strip_topic_index(first_topic.get("topic_title")))
+
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+
+    return "content_test"
+
+
+def save_content_test_output(output, payload=None, output_dir=CONTENT_TEST_OUTPUT_DIR):
+    topic_slug = _slugify_filename_part(_content_test_slug_source(output=output, payload=payload))
+    path = _build_content_test_file_path(topic_slug, output_dir=output_dir)
+    path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def save_content_test_debug(
+    stage_name,
+    raw_model_output,
+    error_message,
+    input_payload,
+    output_dir=CONTENT_TEST_OUTPUT_DIR,
+):
+    topic_slug = _slugify_filename_part(_content_test_slug_source(input_payload=input_payload))
+    path = _build_content_test_file_path(topic_slug, suffix="_debug", output_dir=output_dir)
+    debug_payload = {
+        "stage_name": stage_name,
+        "raw_model_output": raw_model_output,
+        "error_message": str(error_message),
+        "input_payload": input_payload,
+        "timestamp": datetime.now().isoformat(),
+    }
+    path.write_text(json.dumps(debug_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
 
 
 def normalize_content_output(output, topic=None):
@@ -556,6 +951,165 @@ def generate_content_plan(payload, syllabus, client=None, model_name="gemini-2.5
     return parse_model_response(response.text)
 
 
+def _normalize_generated_content_plan(output):
+    if isinstance(output, dict) and isinstance(output.get("content"), dict):
+        return dict(output["content"])
+    return output
+
+
+def _generate_content_plan_for_content_test(
+    payload,
+    syllabus,
+    client,
+    model_name,
+    max_attempts=2,
+):
+    content_input = build_content_generation_input(payload, syllabus)
+    last_raw_output = ""
+    last_error = None
+
+    for _ in range(max_attempts):
+        response = client.models.generate_content(
+            model=model_name,
+            contents=build_content_prompt(payload, syllabus),
+            config={
+                "system_instruction": "You generate valid JSON content plans only.",
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            },
+        )
+        last_raw_output = response.text or ""
+
+        try:
+            output = parse_model_response(last_raw_output)
+            output = _normalize_generated_content_plan(output)
+            validate_generated_content_plan(output, require_sub_contents=False)
+            return output
+        except (ValueError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+    raise ContentTestStageError(
+        "content_generator",
+        last_raw_output,
+        last_error or "Unknown content_generator parsing error.",
+        content_input,
+    )
+
+
+def _build_content_test_course_context(payload, syllabus):
+    return {
+        "topic": syllabus.get("topic", payload.get("target_skill")),
+        "duration_weeks": payload.get("duration_weeks"),
+        "difficulty_level": payload.get("difficulty_level"),
+        "learning_style": payload.get("learning_style"),
+        "hours_per_week": payload.get("hours_per_week"),
+        "personal_parameters": payload.get("personal_parameters", []),
+        "goals": syllabus.get("goals", []),
+    }
+
+
+def _generate_sub_contents_for_content_test_topic(
+    topic,
+    course_context,
+    client,
+    model_name,
+    max_attempts=2,
+):
+    skill = get_skill(CONTENT_GENERATION_SKILL_NAME)
+    sub_content_input = {
+        "course_context": course_context,
+        "topic": topic,
+    }
+    last_raw_output = ""
+    last_error = None
+
+    for _ in range(max_attempts):
+        response = client.models.generate_content(
+            model=model_name,
+            contents=build_sub_content_prompt(topic, course_context, skill_path=skill["skill_path"]),
+            config={
+                "system_instruction": "You generate valid JSON instructional sub-content chunks only.",
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            },
+        )
+        last_raw_output = response.text or ""
+
+        try:
+            output = parse_model_response(last_raw_output)
+            output = normalize_content_output(output, topic=topic)
+            validate_content_output(output)
+            return output
+        except (ValueError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+    raise ContentTestStageError(
+        "sub_content_generator",
+        last_raw_output,
+        last_error or "Unknown sub_content_generator parsing error.",
+        sub_content_input,
+    )
+
+
+def generate_content_test_output(
+    payload,
+    syllabus,
+    client=None,
+    model_name="gemini-2.5-flash",
+    output_dir=CONTENT_TEST_OUTPUT_DIR,
+    max_attempts=2,
+):
+    if client is None:
+        client = build_client()
+
+    try:
+        content = _generate_content_plan_for_content_test(
+            payload,
+            syllabus,
+            client=client,
+            model_name=model_name,
+            max_attempts=max_attempts,
+        )
+    except ContentTestStageError as exc:
+        debug_path = save_content_test_debug(
+            stage_name=exc.stage_name,
+            raw_model_output=exc.raw_model_output,
+            error_message=exc.original_error,
+            input_payload=exc.input_payload,
+            output_dir=output_dir,
+        )
+        raise ValueError(f"Content test generation failed. Debug saved to {debug_path}") from exc.original_error
+
+    course_context = _build_content_test_course_context(payload, syllabus)
+
+    for topic in content.get("topics", []):
+        try:
+            sub_content_result = _generate_sub_contents_for_content_test_topic(
+                topic=topic,
+                course_context=course_context,
+                client=client,
+                model_name=model_name,
+                max_attempts=max_attempts,
+            )
+        except ContentTestStageError as exc:
+            debug_path = save_content_test_debug(
+                stage_name=exc.stage_name,
+                raw_model_output=exc.raw_model_output,
+                error_message=exc.original_error,
+                input_payload=exc.input_payload,
+                output_dir=output_dir,
+            )
+            raise ValueError(f"Content test generation failed. Debug saved to {debug_path}") from exc.original_error
+
+        topic["sub_contents"] = sub_content_result.get("sub_contents", [])
+        attach_page_assessments(topic)
+
+    output = {"content": content}
+    validate_content_test_output(output)
+    saved_path = save_content_test_output(output, payload=payload, output_dir=output_dir)
+    return {"parsed_output": output, "saved_path": saved_path}
+
+
 def generate_sub_contents_for_topic(
     topic,
     course_context,
@@ -699,3 +1253,28 @@ def generate_syllabus(payload, client=None, model_name="gemini-2.5-flash"):
         client=client,
         model_name=model_name,
     )
+
+
+def run_content_test(
+    payload,
+    client=None,
+    model_name="gemini-2.5-flash",
+    output_dir=CONTENT_TEST_OUTPUT_DIR,
+):
+    if client is None:
+        client = build_client()
+
+    syllabus = generate_syllabus_outline(payload, client=client, model_name=model_name)
+    result = generate_content_test_output(
+        payload,
+        syllabus,
+        client=client,
+        model_name=model_name,
+        output_dir=output_dir,
+    )
+    return {
+        "payload": payload,
+        "syllabus": syllabus,
+        "parsed_output": result["parsed_output"],
+        "saved_path": result["saved_path"],
+    }

@@ -100,6 +100,12 @@ Use this exact `content` structure:
 6. Keep the output consistent with the requested difficulty and learner context.
 7. Keep wording precise, instructional, and easy to parse downstream.
 8. Do not include `sub_contents` in this stage. Sub-content chunks will be generated separately later.
+9. Use `topic_description` to signal what learners will actually study in the topic, including whether the topic naturally calls for formulas, worked examples, visual interpretation, graphs, tables, code examples, media or images, or citation-style source recommendations.
+10. Do not create new schema fields for content requirements. If a topic needs formulas, graphs, tables, code, media, or source guidance, mention those needs naturally inside `description`, `target_audience`, and especially `topic_description`.
+11. For mathematical or quantitative topics, make `topic_description` mention the formulas, calculations, and interpretation tasks learners should expect.
+12. For data-analysis topics, make `topic_description` mention visual interpretation tasks such as scatter plots, trend lines, comparison tables, or model-output reading when relevant.
+13. For programming or implementation-oriented topics, make `topic_description` mention concise learner-facing code usage when relevant.
+14. Keep later topics progressive so they build on earlier topics instead of restarting the course from scratch.
 
 # Assessment Rules
 
@@ -114,6 +120,9 @@ Use this exact `content` structure:
 9. Each assessment should evaluate understanding, application, or synthesis of the material covered in that topic.
 10. `assessment_focus` must be an array of concise concepts or skills assessed within that topic.
 11. Do not create assessments for knowledge that was not introduced in the generated content.
+12. Prefer assessments that reflect the likely instructional elements of the topic. For example, formula-based topics should assess interpretation or calculation, data-analysis topics should assess graph or table reading, and implementation-oriented topics should assess code understanding or workflow reasoning when relevant.
+13. Avoid repeating nearly identical assessments across multiple topics.
+14. Make the assessment mix feel purposeful rather than generic. Use question formats that fit the skill being practiced in that topic.
 
 # Quality Checks
 
@@ -132,3 +141,4 @@ Before returning the response, verify all of the following:
 11. Every `"multiple_choice"` `correct_answer` is one of `"A"`, `"B"`, `"C"`, `"D"` and matches the correct choice.
 12. Every `"true_false"` assessment uses `choices` of `["True", "False"]`.
 13. Every `"matching"` assessment includes valid `matching_pairs` and `match_options`.
+14. Every topic description clearly previews the kinds of learner-facing instructional elements the downstream sub-content stage should elaborate.

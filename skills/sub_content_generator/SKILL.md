@@ -56,6 +56,15 @@ Use this exact structure:
 11. If a formula is needed, write it in LaTeX notation using `\(...\)` for inline math and `\[...\]` for display math.
 12. Do not wrap formulas in code fences, backticks, markdown tables, or pseudo-ASCII art.
 13. Keep formulas embedded naturally within the explanatory text so they read like part of the lesson, not a detached markdown artifact.
+14. Decide actively whether each content should include formulas, worked examples, graph descriptions, table descriptions, code examples, media or image guidance, or source recommendations based on the topic and learner context. Include these naturally inside `content_text` only when they genuinely help learning.
+15. If graphs or visual explanations would help, describe what the graph or visual should show and what the learner should notice.
+16. If tables would help, include a small markdown-style table only when it improves clarity and fits naturally in the lesson. Otherwise describe the comparison or dataset clearly in prose.
+17. If code would help, include a short learner-facing example, preferably in Python unless the input suggests otherwise, and explain what the code is doing.
+18. If images or media would help, describe the asset and explain why it would support understanding.
+19. If a citation or source recommendation would help, mention the type of source naturally in the lesson text without inventing exact URLs or bibliographic details.
+20. Avoid repeating the same introductory framing across multiple contents or across later topics in the course.
+21. Make later contents build on prior course context when appropriate instead of reintroducing the entire topic from scratch.
+22. Because the response must be valid JSON, escape backslashes correctly inside JSON strings. For LaTeX, output JSON-safe sequences such as `\\(`, `\\)`, `\\[`, and `\\]`.
 
 # Quality Checks
 
@@ -66,3 +75,4 @@ Before returning the response, verify all of the following:
 3. Every `content_text` is must be 600+ words.
 4. The contents are clear, instructional, and aligned with the topic.
 5. No markdown or explanatory text appears outside the JSON object.
+6. When formulas, graphs, tables, code, media guidance, or source recommendations are included, they are relevant to the topic and embedded naturally inside `content_text`.

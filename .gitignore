@@ -10,3 +10,5 @@ __pycache__/
 penv/
 google-api-key.json
 vectordb/
+content_test_outputs/*.json
+!content_test_outputs/.gitkeep

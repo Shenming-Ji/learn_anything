@@ -4,12 +4,15 @@ import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 
+import content_test_generator
+import content_test_viewer
 import syllabus_generator
 import syllabus_service
 import syllabus_web
@@ -63,6 +66,26 @@ class SyllabusGeneratorTests(unittest.TestCase):
         output = syllabus_service.parse_model_response(text)
 
         self.assertEqual(output["topic"], "Optical Systems")
+
+    def test_parse_model_response_repairs_latex_backslashes_in_json_strings(self):
+        text = """{
+          "topic_title": "3.1 Making Sense of Predictions",
+          "sub_contents": [
+            {
+              "content_title": "Residuals",
+              "content_text": "Residuals can be written as \\(y_{actual} - y_{predicted}\\) and sometimes displayed as \\[e = y - \\hat{y}\\]."
+            }
+          ]
+        }"""
+
+        # Simulate model output with invalid JSON escapes like \( and \[
+        text = text.replace("\\\\(", "\\(").replace("\\\\[", "\\[").replace("\\\\h", "\\h")
+
+        output = syllabus_service.parse_model_response(text)
+
+        content_text = output["sub_contents"][0]["content_text"]
+        self.assertIn("\\(y_{actual} - y_{predicted}\\)", content_text)
+        self.assertIn("\\[e = y - \\hat{y}\\]", content_text)
 
     def test_normalize_content_output_fills_missing_topic_title(self):
         output = syllabus_service.normalize_content_output(
@@ -257,6 +280,208 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertIn('"target_skill": "Intro to robotics"', prompt)
         self.assertIn('"pedagogical_style": "Hands-on and structured."', prompt)
         self.assertIn("Align the topics and assessments with the provided syllabus_context", prompt)
+        self.assertIn("topic_description should preview the most useful instructional elements", prompt)
+
+    def test_build_sub_content_prompt_includes_content_quality_guidance(self):
+        topic = {
+            "topic_title": "1.1 Linear Regression Foundations",
+            "topic_description": "Introduce the purpose of linear regression.",
+            "estimated_hours": 4,
+            "assessments": [],
+        }
+        course_context = {
+            "topic": "Linear regression for beginners",
+            "difficulty_level": 2,
+            "learning_style": "practical",
+        }
+
+        prompt = syllabus_service.build_sub_content_prompt(topic, course_context)
+
+        self.assertIn("decide whether formulas, worked examples, graph descriptions, tables, code examples", prompt)
+        self.assertIn("escape backslashes correctly inside JSON strings", prompt)
+
+    def test_generate_content_test_output_uses_original_pipeline_and_saves_merged_json(self):
+        payload = {
+            "target_skill": "Linear regression for beginners",
+            "duration_weeks": 4,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": ["Prefers intuitive explanations"],
+        }
+        syllabus = {
+            "topic": "Linear regression for beginners",
+            "pedagogical_style": "Practical and step-by-step.",
+            "goals": ["Understand how linear regression models relationships in data."],
+            "syllabus": [
+                {
+                    "week": 1,
+                    "topic": "Regression foundations",
+                    "learning_objectives": ["Explain what a best-fit line represents."],
+                    "assessments": ["Interpret the slope in a simple regression example."],
+                }
+            ],
+        }
+        content_response = {
+            "skill_name": "content_generator",
+            "description": "A beginner-friendly linear regression content plan.",
+            "difficulty_level": "2",
+            "target_audience": "Beginner learners",
+            "topics": [
+                {
+                    "topic_title": "1.1 Linear Regression Foundations",
+                    "topic_description": "Introduce the purpose, assumptions, and interpretation of linear regression.",
+                    "estimated_hours": 4,
+                    "assessment_count": 1,
+                    "assessments": [
+                        {
+                            "assessment_type": "multiple_choice",
+                            "assessment_description": "What does the slope represent in a simple linear regression model?",
+                            "choices": [
+                                "A. The prediction when the input is zero",
+                                "B. The average prediction error",
+                                "C. The change in the prediction for a one-unit increase in the input",
+                                "D. The number of observations in the dataset",
+                            ],
+                            "correct_answer": "C",
+                            "assessment_focus": ["slope", "interpretation"],
+                        }
+                    ],
+                }
+            ],
+        }
+        sub_content_response = {
+            "topic_title": "1.1 Linear Regression Foundations",
+            "sub_contents": [
+                {
+                    "content_title": "Why Linear Regression Matters",
+                    "content_text": "This lesson explains why a simple best-fit line helps summarize relationships in small, real-world datasets.",
+                },
+                {
+                    "content_title": "Slope and Intercept",
+                    "content_text": "This lesson explains how the slope captures rate of change and how the intercept anchors the fitted line.",
+                },
+                {
+                    "content_title": "Model Assumptions",
+                    "content_text": "This lesson outlines when a linear model is a reasonable approximation and what residual patterns can reveal.",
+                },
+                {
+                    "content_title": "Reading Results in Practice",
+                    "content_text": "This lesson connects fitted coefficients to concrete business or scientific interpretations.",
+                },
+            ],
+        }
+        call_state = {"count": 0}
+
+        def fake_generate_content(**_):
+            call_state["count"] += 1
+            if call_state["count"] == 1:
+                return SimpleNamespace(text=json.dumps(content_response))
+            return SimpleNamespace(text=json.dumps(sub_content_response))
+
+        fake_client = SimpleNamespace(
+            models=SimpleNamespace(generate_content=fake_generate_content)
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            result = syllabus_service.generate_content_test_output(
+                payload,
+                syllabus,
+                client=fake_client,
+                output_dir=Path(tmpdir),
+            )
+
+            saved_path = result["saved_path"]
+            saved_output = json.loads(saved_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(call_state["count"], 2)
+        self.assertIn("content", result["parsed_output"])
+        self.assertEqual(saved_output, result["parsed_output"])
+        self.assertNotIn("learning_objectives", result["parsed_output"])
+        topic = result["parsed_output"]["content"]["topics"][0]
+        self.assertEqual(topic["topic_title"], "1.1 Linear Regression Foundations")
+        self.assertEqual(len(topic["sub_contents"]), 4)
+        self.assertIn("page_assessment", topic["sub_contents"][0])
+
+    def test_generate_content_test_output_saves_debug_file_on_sub_content_failure(self):
+        payload = {
+            "target_skill": "Linear regression for beginners",
+            "duration_weeks": 4,
+            "difficulty_level": 2,
+            "learning_style": "practical",
+            "hours_per_week": 5,
+            "personal_parameters": [],
+        }
+        syllabus = {
+            "topic": "Linear regression for beginners",
+            "pedagogical_style": "Practical and step-by-step.",
+            "goals": ["Understand how linear regression models relationships in data."],
+            "syllabus": [],
+        }
+        content_response = {
+            "skill_name": "content_generator",
+            "description": "A beginner-friendly linear regression content plan.",
+            "difficulty_level": "2",
+            "target_audience": "Beginner learners",
+            "topics": [
+                {
+                    "topic_title": "1.1 Linear Regression Foundations",
+                    "topic_description": "Introduce the purpose, assumptions, and interpretation of linear regression.",
+                    "estimated_hours": 4,
+                    "assessment_count": 1,
+                    "assessments": [
+                        {
+                            "assessment_type": "multiple_choice",
+                            "assessment_description": "What does the slope represent in a simple linear regression model?",
+                            "choices": [
+                                "A. The prediction when the input is zero",
+                                "B. The average prediction error",
+                                "C. The change in the prediction for a one-unit increase in the input",
+                                "D. The number of observations in the dataset",
+                            ],
+                            "correct_answer": "C",
+                            "assessment_focus": ["slope", "interpretation"],
+                        }
+                    ],
+                }
+            ],
+        }
+        invalid_sub_content_response = {
+            "topic_title": "1.1 Linear Regression Foundations",
+            "sub_contents": [],
+        }
+        call_state = {"count": 0}
+
+        def fake_generate_content(**_):
+            call_state["count"] += 1
+            if call_state["count"] == 1:
+                return SimpleNamespace(text=json.dumps(content_response))
+            return SimpleNamespace(text=json.dumps(invalid_sub_content_response))
+
+        fake_client = SimpleNamespace(
+            models=SimpleNamespace(generate_content=fake_generate_content)
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as exc:
+                syllabus_service.generate_content_test_output(
+                    payload,
+                    syllabus,
+                    client=fake_client,
+                    output_dir=Path(tmpdir),
+                )
+
+            debug_files = list(Path(tmpdir).glob("*_debug.json"))
+            self.assertEqual(len(debug_files), 1)
+            debug_payload = json.loads(debug_files[0].read_text(encoding="utf-8"))
+
+        self.assertIn("Debug saved to", str(exc.exception))
+        self.assertEqual(call_state["count"], 3)
+        self.assertEqual(debug_payload["stage_name"], "sub_content_generator")
+        self.assertIn("raw_model_output", debug_payload)
+        self.assertIn("error_message", debug_payload)
+        self.assertIn("input_payload", debug_payload)
+        self.assertIn("timestamp", debug_payload)
 
     def test_skill_registry_exposes_content_generation_metadata(self):
         skill = get_skill("content_generation")
@@ -727,6 +952,207 @@ class SyllabusGeneratorTests(unittest.TestCase):
         self.assertTrue(callable(syllabus_service.load_payload))
         self.assertTrue(callable(syllabus_service.generate_syllabus))
         self.assertTrue(callable(syllabus_generator.main))
+        self.assertTrue(callable(content_test_generator.main))
+        self.assertTrue(callable(content_test_viewer.main))
+
+    def test_content_test_generator_main_supports_input_and_save_only(self):
+        payload = {"target_skill": "Linear regression for beginners"}
+        saved_path = Path("/tmp/linear_regression_2026-06-23_1530.json")
+        parsed_output = {
+            "content": {
+                "skill_name": "content_generator",
+                "description": "desc",
+                "difficulty_level": "2",
+                "target_audience": "Beginners",
+                "topics": [
+                    {
+                        "topic_title": "1.1 Topic",
+                        "topic_description": "desc",
+                        "estimated_hours": 1,
+                        "assessment_count": 1,
+                        "assessments": [{"assessment_type": "true_false"}],
+                        "sub_contents": [
+                            {
+                                "content_title": "Lesson 1",
+                                "content_text": "alpha beta gamma delta epsilon zeta",
+                                "page_assessment": {"assessment_type": "true_false"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch.object(content_test_generator, "load_payload", return_value=payload) as load_payload_mock, \
+             patch.object(
+                 content_test_generator,
+                 "run_content_test",
+                 return_value={"parsed_output": parsed_output, "saved_path": saved_path},
+             ) as run_content_test_mock, \
+             redirect_stdout(stdout), \
+             redirect_stderr(stderr):
+            exit_code = content_test_generator.main(
+                ["--input", "python/inputs/linear_regression_content_test.json", "--save-only"]
+            )
+
+        self.assertEqual(exit_code, 0)
+        load_payload_mock.assert_called_once()
+        run_content_test_mock.assert_called_once()
+        self.assertEqual(stdout.getvalue(), "")
+        stderr_text = stderr.getvalue()
+        self.assertIn(f"saved_path: {saved_path}", stderr_text)
+        self.assertIn("topics: 1", stderr_text)
+        self.assertIn("total_sub_contents: 1", stderr_text)
+        self.assertIn("every_sub_content_has_page_assessment: True", stderr_text)
+        self.assertIn("minimum_content_text_word_count: 6", stderr_text)
+        self.assertIn("assessment_count_matches: True", stderr_text)
+
+    def test_summarize_content_test_output_reports_validation_metrics(self):
+        output = {
+            "content": {
+                "topics": [
+                    {
+                        "assessment_count": 1,
+                        "assessments": [{"assessment_type": "true_false"}],
+                        "sub_contents": [
+                            {
+                                "content_text": "one two three four",
+                                "page_assessment": {"assessment_type": "true_false"},
+                            },
+                            {
+                                "content_text": "one two three four five six",
+                                "page_assessment": {"assessment_type": "multiple_choice"},
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+
+        summary = syllabus_service.summarize_content_test_output(output)
+
+        self.assertEqual(summary["topic_count"], 1)
+        self.assertEqual(summary["total_sub_contents"], 2)
+        self.assertTrue(summary["every_sub_content_has_page_assessment"])
+        self.assertEqual(summary["minimum_content_text_word_count"], 4)
+        self.assertTrue(summary["assessment_count_matches"])
+
+    def test_content_test_viewer_detects_quality_signals(self):
+        text = (
+            "A helpful scatter plot would place x-axis values against y-axis values.\n"
+            "Use \\(y = mx + b\\) for the formula.\n"
+            "| x | y |\n|---|---|\n| 1 | 2 |\n"
+            "A standard introductory textbook or documentation reference would help.\n"
+            "import pandas as pd\nmodel.fit(X, y)\n"
+        )
+
+        signals = content_test_viewer.detect_content_signals(text)
+
+        self.assertTrue(signals["formula"])
+        self.assertTrue(signals["code"])
+        self.assertTrue(signals["table"])
+        self.assertTrue(signals["visual"])
+        self.assertTrue(signals["citation"])
+
+    def test_content_test_viewer_normalizes_backticked_math(self):
+        text = (
+            r"`\(\hat{y}_i\)` and `\[ RSS = \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 \]` "
+            r"and `$x + y$` and `$$x^2$$`"
+        )
+
+        normalized = content_test_viewer._normalize_math_markdown(text)
+
+        self.assertIn(r"\(\hat{y}_i\)", normalized)
+        self.assertIn(r"\[ RSS = \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 \]", normalized)
+        self.assertIn(r"$x + y$", normalized)
+        self.assertIn(r"$$x^2$$", normalized)
+        self.assertNotIn(r"`\(\hat{y}_i\)`", normalized)
+
+    def test_content_test_viewer_builds_preview_html_with_debug_indicators(self):
+        payload = {
+            "content": {
+                "skill_name": "Linear Regression Preview",
+                "description": "Debug preview",
+                "difficulty_level": "2",
+                "target_audience": "Beginners",
+                "topics": [
+                    {
+                        "topic_title": "1.1 Topic",
+                        "topic_description": "Includes scatter plot interpretation.",
+                        "estimated_hours": 5,
+                        "assessment_count": 1,
+                        "assessments": [
+                            {
+                                "assessment_type": "multiple_choice",
+                                "assessment_description": "Question",
+                                "choices": ["A. One", "B. Two", "C. Three", "D. Four"],
+                                "correct_answer": "A",
+                                "assessment_focus": ["interpretation"],
+                            }
+                        ],
+                        "sub_contents": [
+                            {
+                                "content_title": "Lesson One",
+                                "content_text": "**Residual** explanation.\n\n`\\(e_i\\)` and `\\[ RSS = \\sum_(i=1)^n (y_i - \\hat{{y}}_i)^2 \\]`\n\nA helpful scatter plot with x-axis and y-axis. \\(y = mx + b\\)\n\n|a|b|\n|---|---|\n|1|2|\n\n```python\nimport pandas as pd\nmodel.fit(X, y)\n```\n\ntextbook reference",
+                                "page_assessment": {
+                                    "assessment_type": "true_false",
+                                    "assessment_description": "Statement",
+                                    "choices": ["True", "False"],
+                                    "correct_answer": "True",
+                                    "assessment_focus": ["lesson check"],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+
+        html = content_test_viewer.build_preview_html(payload, "sample.json")
+
+        self.assertIn("Linear Regression Preview", html)
+        self.assertIn("Words:", html)
+        self.assertIn("Formula:", html)
+        self.assertIn("Code:", html)
+        self.assertIn("Table:", html)
+        self.assertIn("Visual:", html)
+        self.assertIn("Citation/source:", html)
+        self.assertIn("Page Assessment", html)
+        self.assertIn("content_text under 600 words", html)
+        self.assertIn("sample.json", html)
+        self.assertIn("<strong>Residual</strong>", html)
+        self.assertIn('<table class="markdown-table">', html)
+        self.assertIn('<pre class="code-block"><code class="language-python">', html)
+        self.assertIn("cdn.jsdelivr.net/npm/mathjax", html)
+        self.assertIn(r"\(e_i\)", html)
+        self.assertNotIn("<code>\\(e_i\\)</code>", html)
+        self.assertIn("MathJax.typesetPromise()", html)
+
+    def test_content_test_viewer_main_generates_html_preview(self):
+        payload = {
+            "content": {
+                "skill_name": "Linear Regression Preview",
+                "description": "Debug preview",
+                "difficulty_level": "2",
+                "target_audience": "Beginners",
+                "topics": [],
+            }
+        }
+
+        with TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "preview_input.json"
+            input_path.write_text(json.dumps(payload), encoding="utf-8")
+            output_path = input_path.with_name("preview_input_preview.html")
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = content_test_viewer.main(["--input", str(input_path)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(str(output_path), stderr.getvalue())
+            self.assertTrue(output_path.exists())
 
     # test the whole pipeline
     def test_main_reads_json_file_and_prints_result(self):
