@@ -174,7 +174,7 @@ def build_client():
         )
     return genai.Client(
         vertexai=True,
-        project="mcc-ece-gemini",
+        project=os.environ["GOOGLE_CLOUD_PROJECT"],
         location="us-central1",
     )
 
