@@ -10,3 +10,35 @@ __pycache__/
 penv/
 google-api-key.json
 vectordb/
+/content_test_outputs/**
+!/content_test_outputs/.gitkeep
+
+
+# Additional Python environments and caches
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Credential material (keep public examples explicit)
+credentials*.json
+service-account*.json
+service_account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs, build output, and local IDE settings
+*.log
+build/
+dist/
+*.egg-info/
+.idea/
+.vscode/
